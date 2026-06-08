@@ -14,6 +14,11 @@ let players = {};
 let spectators = [];
 let lastMoveSquares = []; // [from, to]
 
+// Offline Bot State
+let isSinglePlayerMode = false;
+let botColor = null;
+let botElo = 1200;
+
 // Audio context (initialized on first interaction)
 let audioCtx = null;
 
@@ -164,8 +169,101 @@ function setupEventHandlers() {
     const btnRematch = document.getElementById('btn-rematch');
     const btnGoLobby = document.getElementById('btn-go-lobby');
 
+    // Bot setup elements
+    const btnPlayBotLobby = document.getElementById('btn-play-bot-lobby');
+    const btnCancelBotSetup = document.getElementById('btn-cancel-bot-setup');
+    const btnStartBotGame = document.getElementById('btn-start-bot-game');
+    const colorLabels = document.querySelectorAll('.color-select-label');
+
     // Trigger audio context startup on first page click
     document.addEventListener('click', initAudio, { once: true });
+
+    // Bot Lobby Button Setup
+    btnPlayBotLobby.addEventListener('click', () => {
+        initAudio();
+        showModal('bot-setup-modal');
+    });
+
+    btnCancelBotSetup.addEventListener('click', () => {
+        hideModal('bot-setup-modal');
+    });
+
+    colorLabels.forEach(label => {
+        label.addEventListener('click', () => {
+            colorLabels.forEach(l => l.classList.remove('active'));
+            label.classList.add('active');
+            const radio = label.querySelector('input[type="radio"]');
+            if (radio) radio.checked = true;
+        });
+    });
+
+    btnStartBotGame.addEventListener('click', () => {
+        initAudio();
+        const inputName = document.getElementById('player-name').value.trim();
+        playerName = inputName || `Jogador_${Math.floor(1000 + Math.random() * 9000)}`;
+        
+        let selectedColor = 'w';
+        const checkedRadio = document.querySelector('input[name="bot-player-color"]:checked');
+        if (checkedRadio) {
+            selectedColor = checkedRadio.value;
+        }
+        if (selectedColor === 'random') {
+            selectedColor = Math.random() < 0.5 ? 'w' : 'b';
+        }
+
+        const selectedElo = parseInt(document.getElementById('bot-elo-select').value);
+
+        hideModal('bot-setup-modal');
+
+        // Solo game parameters initialization
+        isSinglePlayerMode = true;
+        myRole = 'player';
+        myColor = selectedColor;
+        botColor = myColor === 'w' ? 'b' : 'w';
+        botElo = selectedElo;
+        roomId = "SOLO";
+        lastMoveSquares = [];
+        selectedSquare = null;
+        possibleMoves = [];
+
+        players = {};
+        players[socket.id] = { id: socket.id, name: playerName, color: myColor };
+        players['bot'] = { id: 'bot', name: `MiniBot (${botElo} ELO)`, color: botColor };
+        spectators = [];
+
+        game = new Chess();
+
+        document.getElementById('moves-history-list').innerHTML = '';
+        document.getElementById('chat-messages').innerHTML = '<div class="chat-system">Partida Solo Iniciada!</div>';
+        
+        document.getElementById('btn-draw').style.display = 'inline-flex';
+        document.getElementById('btn-resign').style.display = 'inline-flex';
+
+        boardFlipped = (myColor === 'b');
+        const boardWrapper = document.querySelector('.board-wrapper');
+        if (boardFlipped) {
+            boardWrapper.classList.add('flipped');
+        } else {
+            boardWrapper.classList.remove('flipped');
+        }
+
+        document.getElementById('room-code-display').textContent = "SOLO 🤖";
+
+        document.getElementById('lobby-screen').classList.remove('active');
+        document.getElementById('game-screen').classList.add('active');
+
+        updatePlayersHUD();
+        updateTurnIndicator();
+        renderBoard();
+
+        setTimeout(() => {
+            addChatMessage(`MiniBot (${botElo} ELO)`, 'bot', `Olá, ${playerName}! Boa sorte na partida! Eu jogo de ${botColor === 'w' ? 'Brancas' : 'Pretas'}.`);
+        }, 600);
+
+        if (myColor === 'b') {
+            setTimeout(triggerBotMove, 1200);
+        }
+    });
 
     btnCreateRoom.addEventListener('click', () => {
         initAudio();
@@ -199,8 +297,27 @@ function setupEventHandlers() {
         e.preventDefault();
         const text = chatInput.value.trim();
         if (text) {
-            socket.emit('chatMessage', text);
-            chatInput.value = '';
+            if (isSinglePlayerMode) {
+                addChatMessage(playerName, socket.id, text);
+                chatInput.value = '';
+                
+                // Bot interactive chat reply
+                setTimeout(() => {
+                    const replies = [
+                        "Interessante...",
+                        "Estou focado no tabuleiro!",
+                        "Que belo dia para uma partida de xadrez.",
+                        "Você joga bem!",
+                        "Estou calculando minhas próximas jogadas...",
+                        "Será que você consegue me vencer?"
+                    ];
+                    const reply = replies[Math.floor(Math.random() * replies.length)];
+                    addChatMessage(`MiniBot (${botElo} ELO)`, 'bot', reply);
+                }, 1000);
+            } else {
+                socket.emit('chatMessage', text);
+                chatInput.value = '';
+            }
         }
     });
 
@@ -208,14 +325,48 @@ function setupEventHandlers() {
         btn.addEventListener('click', () => {
             initAudio();
             const emoji = btn.getAttribute('data-emoji');
-            socket.emit('chatMessage', `Reação: ${emoji}`);
+            if (isSinglePlayerMode) {
+                addChatMessage(playerName, socket.id, `Reação: ${emoji}`);
+                // Bot reacts back via chat
+                setTimeout(() => {
+                    const botEmojis = ["👏", "😮", "🤔", "👑", "👍", "💥"];
+                    const botEmoji = botEmojis[Math.floor(Math.random() * botEmojis.length)];
+                    addChatMessage(`MiniBot (${botElo} ELO)`, 'bot', `Reação: ${botEmoji}`);
+                }, 800);
+            } else {
+                socket.emit('chatMessage', `Reação: ${emoji}`);
+            }
         });
     });
 
     btnDraw.addEventListener('click', () => {
         if (myRole !== 'player') return;
-        socket.emit('proposeDraw');
-        addSystemMessage("Você propôs um empate ao oponente.");
+        if (isSinglePlayerMode) {
+            addSystemMessage("Você propôs um empate ao computador.");
+            setTimeout(() => {
+                const evalScore = evaluateBoard(game.board());
+                const materialCount = game.history().length;
+                const isDrawish = Math.abs(evalScore) < 120;
+                
+                if (isDrawish && materialCount > 15) {
+                    addChatMessage(`MiniBot (${botElo} ELO)`, 'bot', "Aceito o empate. Boa partida!");
+                    showGameOverModal("🤝 Empate", "Partida empatada por comum acordo.");
+                } else {
+                    const comments = [
+                        "Recuso o empate. Vamos continuar jogando!",
+                        "Não aceito. A posição ainda está muito ativa.",
+                        "Ainda quero lutar pela vitória!",
+                        "Prefiro jogar mais um pouco."
+                    ];
+                    const comment = comments[Math.floor(Math.random() * comments.length)];
+                    addChatMessage(`MiniBot (${botElo} ELO)`, 'bot', comment);
+                    addSystemMessage("Proposta de empate recusada pelo computador.");
+                }
+            }, 1000);
+        } else {
+            socket.emit('proposeDraw');
+            addSystemMessage("Você propôs um empate ao oponente.");
+        }
     });
 
     btnResign.addEventListener('click', () => {
@@ -238,8 +389,14 @@ function setupEventHandlers() {
     });
 
     document.getElementById('btn-confirm-resign').addEventListener('click', () => {
-        socket.emit('resign');
-        hideModal('resign-modal');
+        if (isSinglePlayerMode) {
+            hideModal('resign-modal');
+            showGameOverModal("🏳️ Desistência", `Você desistiu. Vitória do MiniBot (${botElo} ELO)!`);
+            playSound('game-over');
+        } else {
+            socket.emit('resign');
+            hideModal('resign-modal');
+        }
     });
 
     document.getElementById('btn-cancel-resign').addEventListener('click', () => {
@@ -257,9 +414,49 @@ function setupEventHandlers() {
     });
 
     btnRematch.addEventListener('click', () => {
-        socket.emit('requestRematch');
-        btnRematch.disabled = true;
-        btnRematch.textContent = "Aguardando oponente...";
+        if (isSinglePlayerMode) {
+            const nextColor = myColor === 'w' ? 'b' : 'w';
+            hideModal('game-over-modal');
+            
+            myColor = nextColor;
+            botColor = myColor === 'w' ? 'b' : 'w';
+            boardFlipped = (myColor === 'b');
+            
+            const boardWrapper = document.querySelector('.board-wrapper');
+            if (boardFlipped) {
+                boardWrapper.classList.add('flipped');
+            } else {
+                boardWrapper.classList.remove('flipped');
+            }
+            
+            players = {};
+            players[socket.id] = { id: socket.id, name: playerName, color: myColor };
+            players['bot'] = { id: 'bot', name: `MiniBot (${botElo} ELO)`, color: botColor };
+            
+            game = new Chess();
+            lastMoveSquares = [];
+            selectedSquare = null;
+            possibleMoves = [];
+            
+            document.getElementById('moves-history-list').innerHTML = '';
+            document.getElementById('chat-messages').innerHTML = '<div class="chat-system">Nova Partida Iniciada! Cores Invertidas.</div>';
+            
+            updatePlayersHUD();
+            updateTurnIndicator();
+            renderBoard();
+            
+            setTimeout(() => {
+                addChatMessage(`MiniBot (${botElo} ELO)`, 'bot', `Nova partida iniciada! Agora eu jogo de ${botColor === 'w' ? 'Brancas' : 'Pretas'}. Bom jogo!`);
+            }, 600);
+            
+            if (myColor === 'b') {
+                setTimeout(triggerBotMove, 1200);
+            }
+        } else {
+            socket.emit('requestRematch');
+            btnRematch.disabled = true;
+            btnRematch.textContent = "Aguardando oponente...";
+        }
     });
 
     btnGoLobby.addEventListener('click', () => {
@@ -282,6 +479,7 @@ function returnToLobby() {
     
     socket.disconnect();
     
+    isSinglePlayerMode = false;
     roomId = null;
     myRole = 'spectator';
     myColor = null;
@@ -479,6 +677,54 @@ function setupSquareDropEvents(squareEl, targetSquare) {
     });
 }
 
+// Trigger move computation and execution for Bot
+function triggerBotMove() {
+    if (!isSinglePlayerMode || game.game_over() || game.turn() !== botColor) return;
+    
+    const turnText = document.getElementById('turn-text');
+    turnText.textContent = "Computador pensando...";
+    const indicator = document.getElementById('turn-indicator');
+    indicator.className = "turn-indicator opponent-turn";
+    
+    setTimeout(() => {
+        const botMove = getBotMove(game, botElo, botColor);
+        if (botMove) {
+            const moveResult = game.move(botMove);
+            if (moveResult) {
+                lastMoveSquares = [botMove.from, botMove.to];
+                
+                if (moveResult.captured) {
+                    playSound('capture');
+                } else {
+                    playSound('move');
+                }
+                
+                if (game.in_check()) {
+                    setTimeout(() => playSound('check'), 100);
+                    
+                    if (Math.random() < 0.6) {
+                        setTimeout(() => {
+                            const comments = [
+                                "Xeque! Fique atento.",
+                                "Cuidado com o seu Rei!",
+                                "Xeque! Para onde você vai agora?",
+                                "Oops, xeque!"
+                            ];
+                            const comment = comments[Math.floor(Math.random() * comments.length)];
+                            addChatMessage(`MiniBot (${botElo} ELO)`, 'bot', comment);
+                        }, 300);
+                    }
+                }
+                
+                addMoveToHistoryList(moveResult);
+                renderBoard();
+                updateTurnIndicator();
+                checkGameStatus();
+            }
+        }
+    }, 150);
+}
+
 // Execute move locally and sync with server
 function makeMove(from, to) {
     // Clear selection state immediately
@@ -506,19 +752,28 @@ function makeMove(from, to) {
             setTimeout(() => playSound('check'), 100);
         }
 
-        // Sync with server
-        socket.emit('makeMove', {
-            roomId,
-            move: move,
-            fen: game.fen()
-        });
-
         // Add to history
         addMoveToHistoryList(move);
 
         renderBoard();
         updateTurnIndicator();
-        checkGameStatus();
+        
+        if (isSinglePlayerMode) {
+            const gameOver = game.game_over();
+            if (!gameOver) {
+                setTimeout(triggerBotMove, 600);
+            } else {
+                checkGameStatus();
+            }
+        } else {
+            // Sync with server
+            socket.emit('makeMove', {
+                roomId,
+                move: move,
+                fen: game.fen()
+            });
+            checkGameStatus();
+        }
     }
 }
 

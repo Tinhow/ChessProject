@@ -64,6 +64,13 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Offline Bot Mode Action -->
+                    <div class="lobby-solo-actions" style="margin-top: 24px; text-align: center;">
+                        <button id="btn-play-bot-lobby" class="btn outline-btn" style="width: 100%; padding: 14px; font-size: 1.05rem; gap: 10px; display: inline-flex; justify-content: center; align-items: center; border-color: rgba(139, 92, 246, 0.4); background: rgba(139, 92, 246, 0.05); color: #fff;">
+                            <span>🤖</span> Jogar contra o Computador (Jogo Solo)
+                        </button>
+                    </div>
                 </div>
 
                 <footer class="lobby-footer">
@@ -241,9 +248,51 @@
         </div>
     </div>
 
+    <!-- Bot Setup Modal -->
+    <div id="bot-setup-modal" class="modal-overlay">
+        <div class="modal-card glass alert-modal">
+            <h3>🤖 Configurar Jogo Solo</h3>
+            <p style="margin-bottom: 16px; color: var(--color-text-muted); font-size: 0.95rem;">Escolha as suas peças e a força do Computador:</p>
+            
+            <div class="input-group" style="margin: 16px 0;">
+                <label style="font-size: 0.85rem; font-weight: 700; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 1px;">Sua Cor</label>
+                <div style="display: flex; gap: 12px; margin-top: 8px;">
+                    <label style="flex: 1; padding: 12px; border-radius: 8px; background: rgba(255,255,255,0.03); text-align: center; cursor: pointer; border: 1px solid var(--color-border); font-weight: 600; font-size: 0.9rem;" class="color-select-label active">
+                        <input type="radio" name="bot-player-color" value="w" checked style="display:none;">
+                        ⚪ Brancas
+                    </label>
+                    <label style="flex: 1; padding: 12px; border-radius: 8px; background: rgba(255,255,255,0.03); text-align: center; cursor: pointer; border: 1px solid var(--color-border); font-weight: 600; font-size: 0.9rem;" class="color-select-label">
+                        <input type="radio" name="bot-player-color" value="b" style="display:none;">
+                        ⚫ Pretas
+                    </label>
+                    <label style="flex: 1; padding: 12px; border-radius: 8px; background: rgba(255,255,255,0.03); text-align: center; cursor: pointer; border: 1px solid var(--color-border); font-weight: 600; font-size: 0.9rem;" class="color-select-label">
+                        <input type="radio" name="bot-player-color" value="random" style="display:none;">
+                        🔀 Aleatório
+                    </label>
+                </div>
+            </div>
+
+            <div class="input-group" style="margin: 16px 0 24px 0;">
+                <label for="bot-elo-select" style="font-size: 0.85rem; font-weight: 700; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 1px;">Força do Robô</label>
+                <select id="bot-elo-select" style="background: rgba(0, 0, 0, 0.4); border: 1px solid var(--color-border); border-radius: 8px; padding: 12px; color: #fff; font-family: var(--font-primary); font-size: 1rem; width: 100%; outline: none; margin-top: 8px; cursor: pointer; transition: border-color 0.2s;">
+                    <option value="200">🤖 MiniBot 200 (Iniciante)</option>
+                    <option value="600">🤖 MiniBot 600 (Amador)</option>
+                    <option value="1200" selected>🤖 MiniBot 1200 (Intermediário)</option>
+                    <option value="1800">🤖 MiniBot 1800 (Mestre)</option>
+                </select>
+            </div>
+
+            <div class="modal-buttons" style="margin-top: 10px;">
+                <button id="btn-start-bot-game" class="btn primary-btn">Iniciar Jogo</button>
+                <button id="btn-cancel-bot-setup" class="btn outline-btn">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Libraries and Scripts -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
     <script src="/socket.io/socket.io.js"></script>
+    <script src="bot.js"></script>
     <script src="client.js"></script>
 </body>
 </html>

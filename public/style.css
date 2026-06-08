@@ -1105,3 +1105,32 @@ body {
 ::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.2);
 }
+
+/* Bot Setup Modal Styles */
+.color-select-label {
+    transition: all 0.2s ease;
+}
+
+.color-select-label:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.color-select-label.active {
+    border-color: var(--color-primary) !important;
+    background: rgba(139, 92, 246, 0.15) !important;
+    box-shadow: 0 0 12px rgba(139, 92, 246, 0.25);
+    color: #fff !important;
+}
+
+#bot-elo-select:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.25);
+    background: rgba(0, 0, 0, 0.6) !important;
+}
+
+#bot-elo-select option {
+    background-color: #0d0e14;
+    color: #fff;
+    padding: 10px;
+}
