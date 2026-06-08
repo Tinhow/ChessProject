@@ -1594,6 +1594,17 @@ socket.on('disconnect', (reason) => {
 socket.on('connect', () => {
     showReconnectingOverlay(false);
     console.log('Socket connected:', socket.id);
+    
+    // If we were in an active multiplayer room, rejoin automatically to sync state
+    if (!isSinglePlayerMode && roomId && roomId !== 'SOLO') {
+        console.log(`[Socket] Re-joining active room ${roomId} after connection restore...`);
+        addSystemMessage('♻️ Conexão restabelecida! Sincronizando estado da partida...');
+        socket.emit('joinRoom', { roomId, playerName });
+    }
+});
+
+socket.on('connect_error', (err) => {
+    console.warn('Socket connection error:', err.message);
 });
 
 socket.on('reconnect_error', () => {
