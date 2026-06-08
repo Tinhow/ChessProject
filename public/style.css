@@ -19,7 +19,7 @@
     --square-light: #f0f2f5;
     --square-dark: #5c6e88;
     --color-selected: rgba(139, 92, 246, 0.5); /* Glowing Violet */
-    --color-last-move: rgba(6, 182, 212, 0.35); /* Glowing Cyan */
+    --color-last-move: rgba(245, 230, 150, 0.55); /* Soft yellow/cream last move */
     --color-highlight: rgba(16, 185, 129, 0.3); /* Green dots for moves */
 }
 
@@ -234,6 +234,28 @@ body {
     font-family: var(--font-mono);
     font-weight: 700;
     letter-spacing: 2px;
+}
+
+.spectate-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    user-select: none;
+}
+
+.spectate-checkbox input {
+    accent-color: var(--color-accent);
+    cursor: pointer;
+    width: 14px;
+    height: 14px;
+}
+
+.spectate-checkbox label {
+    cursor: pointer;
+    font-weight: 500;
 }
 
 /* Buttons */
@@ -590,7 +612,6 @@ body {
     position: absolute;
     top: 0; left: 0; right: 0; bottom: 0;
     background-color: var(--color-last-move);
-    mix-blend-mode: screen;
     z-index: 1;
     pointer-events: none;
 }

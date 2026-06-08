@@ -191,7 +191,8 @@ function setupEventHandlers() {
         }
         roomId = codeInput;
 
-        socket.emit('joinRoom', { roomId, playerName });
+        const spectateMode = document.getElementById('spectate-mode-checkbox').checked;
+        socket.emit('joinRoom', { roomId, playerName, spectateMode });
     });
 
     chatForm.addEventListener('submit', (e) => {
@@ -871,6 +872,15 @@ socket.on('roomJoined', (data) => {
     myColor = data.color;
     players = data.players;
     spectators = data.spectators;
+
+    // Show/hide draw and resign buttons for spectators
+    if (myRole === 'spectator') {
+        document.getElementById('btn-draw').style.display = 'none';
+        document.getElementById('btn-resign').style.display = 'none';
+    } else {
+        document.getElementById('btn-draw').style.display = 'inline-flex';
+        document.getElementById('btn-resign').style.display = 'inline-flex';
+    }
 
     // Load board state
     game = new Chess(data.fen);

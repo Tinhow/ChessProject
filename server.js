@@ -42,7 +42,7 @@ io.on('connection', (socket) => {
     console.log(`User connected: ${socket.id}`);
     let currentRoomId = null;
 
-    socket.on('joinRoom', ({ roomId, playerName }) => {
+    socket.on('joinRoom', ({ roomId, playerName, spectateMode }) => {
         roomId = roomId.trim().toUpperCase();
         playerName = playerName ? playerName.trim() : `Jogador_${socket.id.substring(0, 4)}`;
 
@@ -71,7 +71,7 @@ io.on('connection', (socket) => {
 
         const playerIds = Object.keys(room.players);
 
-        if (playerIds.length < 2) {
+        if (!spectateMode && playerIds.length < 2) {
             role = 'player';
             // First player gets White, second gets Black
             color = playerIds.length === 0 ? 'w' : (room.players[playerIds[0]].color === 'w' ? 'b' : 'w');
