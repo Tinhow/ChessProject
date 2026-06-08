@@ -393,6 +393,9 @@ function setupEventHandlers() {
         if (myColor === 'b') {
             setTimeout(triggerBotMove, 1200);
         }
+
+        // Disconnect socket - solo mode is fully offline, no server needed
+        socket.disconnect();
     });
 
     btnCreateRoom.addEventListener('click', () => {
@@ -608,6 +611,11 @@ function returnToLobby() {
     hideModal('game-over-modal');
     
     clearGameState();
+    
+    // Ensure socket is connected when returning to lobby
+    if (!socket.connected) {
+        socket.connect();
+    }
     socket.disconnect();
     
     isSinglePlayerMode = false;
@@ -1473,3 +1481,59 @@ socket.on('playerLeft', (data) => {
     updateTurnIndicator();
     renderBoard();
 });
+
+// ------------------------------------------
+// CONNECTION HEALTH (Render keep-alive & disconnect overlay)
+// ------------------------------------------
+
+// Show/hide reconnecting overlay
+function showReconnectingOverlay(visible) {
+    let overlay = document.getElementById('reconnect-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'reconnect-overlay';
+        overlay.style.cssText = [
+            'position:fixed', 'inset:0', 'z-index:9999',
+            'background:rgba(9,10,15,0.88)',
+            'backdrop-filter:blur(6px)',
+            'display:flex', 'flex-direction:column',
+            'align-items:center', 'justify-content:center',
+            'gap:14px', 'color:#fff', 'font-family:Outfit,sans-serif'
+        ].join(';');
+        overlay.innerHTML = `
+            <span style="font-size:2.5rem">⚡</span>
+            <p style="font-size:1.1rem;font-weight:700;margin:0">Reconectando ao servidor...</p>
+            <p style="font-size:0.85rem;color:#94a3b8;margin:0">O servidor pode ter hibernado. Aguarde um momento.</p>
+            <div style="width:36px;height:36px;border:3px solid rgba(139,92,246,0.3);border-top-color:#8b5cf6;border-radius:50%;animation:spin 0.8s linear infinite"></div>
+            <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+        `;
+        document.body.appendChild(overlay);
+    }
+    overlay.style.display = visible ? 'flex' : 'none';
+}
+
+socket.on('disconnect', (reason) => {
+    // Don't show overlay if we intentionally disconnected or in solo mode
+    if (isSinglePlayerMode) return;
+    if (reason === 'io client disconnect') return;
+    console.warn('Socket disconnected:', reason);
+    if (document.getElementById('game-screen')?.classList.contains('active')) {
+        showReconnectingOverlay(true);
+    }
+});
+
+socket.on('connect', () => {
+    showReconnectingOverlay(false);
+    console.log('Socket connected:', socket.id);
+});
+
+socket.on('reconnect_error', () => {
+    console.warn('Reconnect attempt failed.');
+});
+
+// Keep-alive ping every 8 minutes to prevent Render free-tier sleep during active multiplayer
+setInterval(() => {
+    if (!isSinglePlayerMode && socket.connected && roomId && roomId !== 'SOLO') {
+        fetch('/api/info').catch(() => {}); // lightweight GET to keep server awake
+    }
+}, 8 * 60 * 1000);
