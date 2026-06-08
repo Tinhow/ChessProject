@@ -775,12 +775,12 @@ body {
 .move-white {
     color: #fff;
     font-weight: 600;
-    width: 40px;
+    flex: 1;
 }
 
 .move-black {
     color: var(--color-text-muted);
-    width: 40px;
+    flex: 1;
 }
 
 /* Chat Section */

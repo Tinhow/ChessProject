@@ -723,6 +723,33 @@ function showGameOverModal(title, reason) {
     playSound('game-over');
 }
 
+// Translate English SAN notation to Portuguese algebraic notation
+function translateSanToPt(san) {
+    if (!san) return '';
+    let result = san;
+    const firstChar = san.charAt(0);
+    if (firstChar === 'N') {
+        result = 'C' + san.substring(1);
+    } else if (firstChar === 'K') {
+        result = 'R' + san.substring(1);
+    } else if (firstChar === 'Q') {
+        result = 'D' + san.substring(1);
+    } else if (firstChar === 'R') {
+        result = 'T' + san.substring(1);
+    } else if (firstChar === 'B') {
+        result = 'B' + san.substring(1);
+    }
+    
+    // Replace promotion if any
+    result = result.replace('=N', '=C')
+                   .replace('=K', '=R')
+                   .replace('=Q', '=D')
+                   .replace('=R', '=T')
+                   .replace('=B', '=B');
+                   
+    return result;
+}
+
 // Populate moves history list
 function rebuildMovesHistory(movesArray) {
     const listEl = document.getElementById('moves-history-list');
@@ -738,11 +765,11 @@ function rebuildMovesHistory(movesArray) {
         
         const whiteSpan = document.createElement('span');
         whiteSpan.className = 'move-white';
-        whiteSpan.textContent = movesArray[i].san;
+        whiteSpan.textContent = translateSanToPt(movesArray[i].san);
         
         const blackSpan = document.createElement('span');
         blackSpan.className = 'move-black';
-        blackSpan.textContent = movesArray[i + 1] ? movesArray[i + 1].san : '';
+        blackSpan.textContent = movesArray[i + 1] ? translateSanToPt(movesArray[i + 1].san) : '';
 
         pairEl.appendChild(numSpan);
         pairEl.appendChild(whiteSpan);
@@ -767,7 +794,7 @@ function addMoveToHistoryList(move) {
         
         const whiteSpan = document.createElement('span');
         whiteSpan.className = 'move-white';
-        whiteSpan.textContent = move.san;
+        whiteSpan.textContent = translateSanToPt(move.san);
         
         const blackSpan = document.createElement('span');
         blackSpan.className = 'move-black';
@@ -782,7 +809,7 @@ function addMoveToHistoryList(move) {
         const lastPair = listEl.lastElementChild;
         if (lastPair) {
             const blackSpan = lastPair.querySelector('.move-black');
-            if (blackSpan) blackSpan.textContent = move.san;
+            if (blackSpan) blackSpan.textContent = translateSanToPt(move.san);
         }
     }
     listEl.scrollTop = listEl.scrollHeight;
