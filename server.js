@@ -145,17 +145,51 @@ io.on('connection', (socket) => {
         let role = 'spectator';
         let color = null;
 
-        const playerIds = Object.keys(room.players);
+        // Clean up any old spectator entry with the same name to prevent duplicates
+        room.spectators = room.spectators.filter(s => s.name.toLowerCase() !== playerName.toLowerCase());
 
-        if (!spectateMode && playerIds.length < 2) {
+        // Check if a player with this name already exists in the room (reconnection/refresh case)
+        let existingPlayerKey = null;
+        for (const [sid, p] of Object.entries(room.players)) {
+            if (p.name.toLowerCase() === playerName.toLowerCase()) {
+                existingPlayerKey = sid;
+                break;
+            }
+        }
+
+        if (existingPlayerKey) {
+            // Reconnection: reclaim slot and keep the color
             role = 'player';
-            // First player gets White, second gets Black
-            color = playerIds.length === 0 ? 'w' : (room.players[playerIds[0]].color === 'w' ? 'b' : 'w');
+            color = room.players[existingPlayerKey].color;
+            
+            // Remove the old connection entry
+            delete room.players[existingPlayerKey];
+            
+            // Register under the new connection ID
             room.players[socket.id] = {
                 id: socket.id,
                 name: playerName,
                 color: color
             };
+            console.log(`[Reconnection] Player "${playerName}" reclaimed slot in room ${roomId}. Color: ${color}`);
+        } else if (!spectateMode) {
+            const playerIds = Object.keys(room.players);
+            if (playerIds.length < 2) {
+                role = 'player';
+                // First player gets White, second gets Black
+                color = playerIds.length === 0 ? 'w' : (room.players[playerIds[0]].color === 'w' ? 'b' : 'w');
+                room.players[socket.id] = {
+                    id: socket.id,
+                    name: playerName,
+                    color: color
+                };
+            } else {
+                // Room is full, join as spectator
+                room.spectators.push({
+                    id: socket.id,
+                    name: playerName
+                });
+            }
         } else {
             room.spectators.push({
                 id: socket.id,
