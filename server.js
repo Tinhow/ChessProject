@@ -263,4 +263,23 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`  Local access: http://localhost:${PORT}`);
     console.log(`  LAN access:   http://${localIP}:${PORT}`);
     console.log(`===================================================`);
+
+    // Self-ping keep-alive: prevents Render free-tier from hibernating
+    // Only runs in production (Render sets NODE_ENV=production automatically)
+    if (process.env.NODE_ENV === 'production' || process.env.RENDER) {
+        const SELF_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+        const PING_INTERVAL = 10 * 60 * 1000; // 10 minutes
+
+        setInterval(() => {
+            const url = `${SELF_URL}/api/info`;
+            http.get(url, (res) => {
+                console.log(`[keep-alive] Self-ping OK (${res.statusCode}) → ${url}`);
+            }).on('error', (err) => {
+                console.warn(`[keep-alive] Self-ping failed: ${err.message}`);
+            });
+        }, PING_INTERVAL);
+
+        console.log(`[keep-alive] Self-ping ativo a cada 10 minutos → ${SELF_URL}`);
+    }
 });
+
