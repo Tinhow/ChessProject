@@ -1,0 +1,20 @@
+{
+  "name": "lan-chess",
+  "version": "1.0.0",
+  "description": "Online chess multiplayer game for LAN networks",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "devDependencies": {
+    "localtunnel": "^2.0.2"
+  }
+}

@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LAN Chess - Xadrez Multiplayer Local</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Main Stylesheet -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Background elements for depth -->
+    <div class="bg-glow-1"></div>
+    <div class="bg-glow-2"></div>
+
+    <div class="app-container">
+        <!-- 1. Lobby Screen -->
+        <main id="lobby-screen" class="screen active">
+            <div class="lobby-card glass">
+                <header class="lobby-header">
+                    <div class="logo-icon">♟️</div>
+                    <h1>LAN Chess</h1>
+                    <p class="subtitle">Xadrez Multiplayer para Rede Local</p>
+                </header>
+
+                <div class="lobby-body">
+                    <!-- Profile Section -->
+                    <div class="input-group">
+                        <label for="player-name">Seu Apelido</label>
+                        <input type="text" id="player-name" placeholder="Digite seu nome..." maxlength="15" autocomplete="off">
+                    </div>
+
+                    <div class="lobby-actions">
+                        <!-- Create Room -->
+                        <div class="action-card create-card">
+                            <h3>Criar uma Sala</h3>
+                            <p>Comece um novo jogo e convide alguém da sala.</p>
+                            <button id="btn-create-room" class="btn primary-btn">
+                                <span class="btn-icon">➕</span> Criar Sala
+                            </button>
+                        </div>
+
+                        <!-- Divider -->
+                        <div class="action-divider">
+                            <span>OU</span>
+                        </div>
+
+                        <!-- Join Room -->
+                        <div class="action-card join-card">
+                            <h3>Entrar em uma Sala</h3>
+                            <p>Digite o código compartilhado pelo host.</p>
+                            <div class="join-form">
+                                <input type="text" id="room-code-input" placeholder="CÓDIGO" maxlength="6" autocomplete="off">
+                                <button id="btn-join-room" class="btn secondary-btn">
+                                    Entrar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <footer class="lobby-footer">
+                    <div class="network-info">
+                        <span class="info-icon">🌐</span>
+                        <div class="info-text">
+                            <span class="info-label">Endereço da Rede Local:</span>
+                            <span id="lan-ip-display" class="info-value">Carregando IP...</span>
+                        </div>
+                    </div>
+                    <p class="info-desc">Compartilhe o endereço acima para que outros computadores da sala possam se conectar.</p>
+                </footer>
+            </div>
+        </main>
+
+        <!-- 2. Game Screen -->
+        <main id="game-screen" class="screen">
+            <div class="game-layout">
+                <!-- Board Area (Left/Center) -->
+                <div class="board-area">
+                    <!-- Opponent Player Info (Top of Board) -->
+                    <div id="opponent-card" class="player-hud glass">
+                        <div class="player-profile">
+                            <div class="avatar-circle opponent-color-badge">?</div>
+                            <div class="player-meta">
+                                <span id="opponent-name" class="player-name">Aguardando oponente...</span>
+                                <span id="opponent-status" class="player-status disconnected">Off-line</span>
+                            </div>
+                        </div>
+                        <div id="opponent-captured" class="captured-pieces">
+                            <!-- Captured white pieces list -->
+                        </div>
+                    </div>
+
+                    <!-- Chess Board Container -->
+                    <div class="board-wrapper">
+                        <!-- Coordinates labels: Vertical (Left) -->
+                        <div class="board-coords vertical-coords">
+                            <div>8</div><div>7</div><div>6</div><div>5</div><div>4</div><div>3</div><div>2</div><div>1</div>
+                        </div>
+
+                        <!-- The Actual Board -->
+                        <div class="board-container">
+                            <div id="board" class="chess-board"></div>
+                        </div>
+
+                        <!-- Coordinates labels: Horizontal (Bottom) -->
+                        <div class="board-coords horizontal-coords">
+                            <div>A</div><div>B</div><div>C</div><div>D</div><div>E</div><div>F</div><div>G</div><div>H</div>
+                        </div>
+                    </div>
+
+                    <!-- Self Player Info (Bottom of Board) -->
+                    <div id="self-card" class="player-hud glass">
+                        <div class="player-profile">
+                            <div class="avatar-circle self-color-badge">?</div>
+                            <div class="player-meta">
+                                <span id="self-name" class="player-name">Você</span>
+                                <span id="self-role" class="player-role">Jogador</span>
+                            </div>
+                        </div>
+                        <div id="self-captured" class="captured-pieces">
+                            <!-- Captured black pieces list -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sidebar Controls & Chat (Right) -->
+                <aside class="game-sidebar glass">
+                    <!-- Room Info Panel -->
+                    <div class="sidebar-section room-info-panel">
+                        <div class="room-code-badge">
+                            <span class="badge-label">Sala:</span>
+                            <span id="room-code-display" class="badge-value">XXXX</span>
+                        </div>
+                        <div id="turn-indicator" class="turn-indicator">
+                            <span class="turn-dot"></span>
+                            <span id="turn-text" class="turn-text">Carregando...</span>
+                        </div>
+                    </div>
+
+                    <!-- Move History -->
+                    <div class="sidebar-section history-section">
+                        <h4>Histórico de Jogadas</h4>
+                        <div id="moves-history-list" class="history-list">
+                            <!-- Moves list rendered dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Chat & Social -->
+                    <div class="sidebar-section chat-section">
+                        <h4>Chat / Reações</h4>
+                        <div id="chat-messages" class="chat-messages">
+                            <div class="chat-system">Bem-vindo à sala!</div>
+                        </div>
+                        
+                        <!-- Quick Emoji Reactions -->
+                        <div class="emoji-reactions">
+                            <button class="emoji-btn" data-emoji="👏">👏</button>
+                            <button class="emoji-btn" data-emoji="😮">😮</button>
+                            <button class="emoji-btn" data-emoji="🤔">🤔</button>
+                            <button class="emoji-btn" data-emoji="👑">👑</button>
+                            <button class="emoji-btn" data-emoji="👍">👍</button>
+                            <button class="emoji-btn" data-emoji="💥">💥</button>
+                        </div>
+
+                        <!-- Chat input -->
+                        <form id="chat-form" class="chat-form">
+                            <input type="text" id="chat-input" placeholder="Enviar mensagem..." autocomplete="off" maxlength="80">
+                            <button type="submit" id="btn-send-chat" class="chat-send-btn">➔</button>
+                        </form>
+                    </div>
+
+                    <!-- Action Actions Buttons -->
+                    <div class="sidebar-actions">
+                        <button id="btn-draw" class="action-btn" title="Propor Empate">🤝 Propor Empate</button>
+                        <button id="btn-resign" class="action-btn danger-btn" title="Desistir da Partida">🏳️ Desistir</button>
+                        <button id="btn-leave" class="action-btn outline-btn" title="Sair do Jogo">🚪 Sair</button>
+                    </div>
+                </aside>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+
+    <!-- Draw Offer Modal -->
+    <div id="draw-modal" class="modal-overlay">
+        <div class="modal-card glass alert-modal">
+            <h3>🤝 Proposta de Empate</h3>
+            <p>O seu oponente está propondo um empate. Você aceita?</p>
+            <div class="modal-buttons">
+                <button id="btn-accept-draw" class="btn primary-btn">Aceitar Empate</button>
+                <button id="btn-decline-draw" class="btn outline-btn">Recusar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Over Modal -->
+    <div id="game-over-modal" class="modal-overlay">
+        <div class="modal-card glass">
+            <h2 id="game-over-title">Fim de Jogo</h2>
+            <p id="game-over-reason" class="game-over-desc">Razão do término</p>
+            
+            <div class="modal-buttons">
+                <button id="btn-rematch" class="btn primary-btn">🔄 Propor Revanche</button>
+                <button id="btn-go-lobby" class="btn outline-btn">🚪 Voltar ao Lobby</button>
+            </div>
+            
+            <p id="rematch-status" class="rematch-status-msg"></p>
+        </div>
+    </div>
+
+    <!-- Leave Room Confirmation Modal -->
+    <div id="leave-modal" class="modal-overlay">
+        <div class="modal-card glass alert-modal">
+            <h3>🚪 Sair da Sala</h3>
+            <p>Tem certeza que deseja sair do jogo e voltar ao lobby?</p>
+            <div class="modal-buttons">
+                <button id="btn-confirm-leave" class="btn primary-btn danger-btn">Sair</button>
+                <button id="btn-cancel-leave" class="btn outline-btn">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resign Confirmation Modal -->
+    <div id="resign-modal" class="modal-overlay">
+        <div class="modal-card glass alert-modal">
+            <h3>🏳️ Desistir da Partida</h3>
+            <p>Tem certeza que deseja desistir? A vitória será concedida ao seu oponente.</p>
+            <div class="modal-buttons">
+                <button id="btn-confirm-resign" class="btn primary-btn danger-btn">Desistir</button>
+                <button id="btn-cancel-resign" class="btn outline-btn">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Libraries and Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="client.js"></script>
+</body>
+</html>
