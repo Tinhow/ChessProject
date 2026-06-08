@@ -146,10 +146,140 @@ async function loadNetworkInfo() {
     }
 }
 
+// ============================================
+// SAVE STATE (localStorage)
+// ============================================
+
+const SAVE_KEY = 'chessGameState';
+
+function saveGameState() {
+    try {
+        const state = {
+            isSinglePlayerMode,
+            fen: game.fen(),
+            moves: game.history({ verbose: true }),
+            myColor,
+            myRole,
+            playerName,
+            roomId,
+            botColor,
+            botElo,
+            lastMoveSquares,
+            savedAt: Date.now()
+        };
+        localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+    } catch (e) {
+        console.warn('Falha ao salvar estado:', e);
+    }
+}
+
+function clearGameState() {
+    localStorage.removeItem(SAVE_KEY);
+}
+
+function loadGameState() {
+    try {
+        const raw = localStorage.getItem(SAVE_KEY);
+        if (!raw) return;
+        const state = JSON.parse(raw);
+
+        // Ignore saves older than 12 hours
+        if (Date.now() - state.savedAt > 12 * 60 * 60 * 1000) {
+            clearGameState();
+            return;
+        }
+
+        // Show resume banner in lobby
+        const resumeBanner = document.getElementById('resume-banner');
+        if (!resumeBanner) return;
+
+        const modeLabel = state.isSinglePlayerMode
+            ? `🤖 Solo vs MiniBot (${state.botElo} ELO)`
+            : `🌐 Sala ${state.roomId}`;
+        const colorLabel = state.myColor === 'w' ? '⚪ Brancas' : '⚫ Pretas';
+        const movesCount = state.moves ? state.moves.length : 0;
+
+        document.getElementById('resume-mode-label').textContent = modeLabel;
+        document.getElementById('resume-moves-label').textContent = `${colorLabel} · ${movesCount} jogadas feitas`;
+        resumeBanner.style.display = 'flex';
+
+        document.getElementById('btn-resume-game').onclick = () => {
+            resumeBanner.style.display = 'none';
+            restoreGameState(state);
+        };
+
+        document.getElementById('btn-discard-game').onclick = () => {
+            clearGameState();
+            resumeBanner.style.display = 'none';
+        };
+    } catch (e) {
+        console.warn('Falha ao carregar estado salvo:', e);
+        clearGameState();
+    }
+}
+
+function restoreGameState(state) {
+    initAudio();
+
+    isSinglePlayerMode = state.isSinglePlayerMode;
+    myColor = state.myColor;
+    myRole = state.myRole;
+    playerName = state.playerName;
+    roomId = state.roomId;
+    botColor = state.botColor;
+    botElo = state.botElo;
+    lastMoveSquares = state.lastMoveSquares || [];
+
+    if (isSinglePlayerMode) {
+        // Restore solo game directly
+        game = new Chess();
+        if (state.moves && state.moves.length > 0) {
+            state.moves.forEach(m => game.move(m));
+        }
+
+        players = {};
+        players[socket.id] = { id: socket.id, name: playerName, color: myColor };
+        players['bot'] = { id: 'bot', name: `MiniBot (${botElo} ELO)`, color: botColor };
+        spectators = [];
+
+        boardFlipped = (myColor === 'b');
+        const boardWrapper = document.querySelector('.board-wrapper');
+        if (boardFlipped) boardWrapper.classList.add('flipped');
+        else boardWrapper.classList.remove('flipped');
+
+        document.getElementById('btn-draw').style.display = 'inline-flex';
+        document.getElementById('btn-resign').style.display = 'inline-flex';
+        document.getElementById('room-code-display').textContent = 'SOLO 🤖';
+        document.getElementById('moves-history-list').innerHTML = '';
+        document.getElementById('chat-messages').innerHTML = '<div class="chat-system">♻️ Partida restaurada! Continuando de onde parou...</div>';
+
+        if (state.moves) rebuildMovesHistory(state.moves);
+
+        document.getElementById('lobby-screen').classList.remove('active');
+        document.getElementById('game-screen').classList.add('active');
+
+        updatePlayersHUD();
+        updateTurnIndicator();
+        renderBoard();
+
+        // If it's bot's turn, trigger bot move
+        if (game.turn() === botColor && !game.game_over()) {
+            setTimeout(triggerBotMove, 1000);
+        }
+    } else {
+        // Restore multiplayer: rejoin the room
+        document.getElementById('player-name').value = playerName;
+        document.getElementById('room-code-input').value = roomId;
+        addSystemMessage(`♻️ Reconectando à sala ${roomId}...`);
+        socket.emit('joinRoom', { roomId, playerName });
+    }
+}
+
 // Initialize board rendering and UI bindings
 document.addEventListener('DOMContentLoaded', () => {
     loadNetworkInfo();
     setupEventHandlers();
+    loadGameState();
 });
 
 // UI Event Handlers
@@ -477,6 +607,7 @@ function returnToLobby() {
     hideModal('leave-modal');
     hideModal('game-over-modal');
     
+    clearGameState();
     socket.disconnect();
     
     isSinglePlayerMode = false;
@@ -717,8 +848,12 @@ function triggerBotMove() {
                 }
                 
                 addMoveToHistoryList(moveResult);
+                saveGameState();
                 renderBoard();
                 updateTurnIndicator();
+                if (game.game_over()) {
+                    clearGameState();
+                }
                 checkGameStatus();
             }
         }
@@ -759,10 +894,12 @@ function makeMove(from, to) {
         updateTurnIndicator();
         
         if (isSinglePlayerMode) {
+            saveGameState();
             const gameOver = game.game_over();
             if (!gameOver) {
                 setTimeout(triggerBotMove, 600);
             } else {
+                clearGameState();
                 checkGameStatus();
             }
         } else {
@@ -1194,6 +1331,9 @@ socket.on('roomJoined', (data) => {
     document.getElementById('game-screen').classList.add('active');
 
     addSystemMessage(`Você entrou na sala ${roomId} como ${myRole === 'player' ? (myColor === 'w' ? 'Brancas' : 'Pretas') : 'Espectador'}.`);
+    
+    // Save multiplayer session for reconnection
+    if (myRole === 'player') saveGameState();
 });
 
 socket.on('playerJoined', (data) => {
@@ -1247,6 +1387,8 @@ socket.on('moveMade', (moveData) => {
 
     renderBoard();
     updateTurnIndicator();
+    if (!isSinglePlayerMode) saveGameState();
+    if (game.game_over()) clearGameState();
     checkGameStatus();
 });
 
