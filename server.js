@@ -145,13 +145,20 @@ io.on('connection', (socket) => {
         let role = 'spectator';
         let color = null;
 
+        const normalizedJoinName = playerName.trim().toLowerCase();
+        console.log(`[joinRoom] Usuário "${playerName}" tentando entrar na sala "${roomId}". Modo Espectador: ${!!spectateMode}`);
+
         // Clean up any old spectator entry with the same name to prevent duplicates
-        room.spectators = room.spectators.filter(s => s.name.toLowerCase() !== playerName.toLowerCase());
+        room.spectators = room.spectators.filter(s => s.name.trim().toLowerCase() !== normalizedJoinName);
 
         // Check if a player with this name already exists in the room (reconnection/refresh case)
         let existingPlayerKey = null;
+        console.log(`[joinRoom] Lista atual de jogadores em memória na sala ${roomId}:`, JSON.stringify(room.players));
+
         for (const [sid, p] of Object.entries(room.players)) {
-            if (p.name.toLowerCase() === playerName.toLowerCase()) {
+            const normalizedExistingName = p.name ? p.name.trim().toLowerCase() : '';
+            console.log(`[joinRoom] Comparando "${normalizedJoinName}" com "${normalizedExistingName}" (socket: ${sid})`);
+            if (normalizedExistingName === normalizedJoinName) {
                 existingPlayerKey = sid;
                 break;
             }
@@ -171,9 +178,10 @@ io.on('connection', (socket) => {
                 name: playerName,
                 color: color
             };
-            console.log(`[Reconnection] Player "${playerName}" reclaimed slot in room ${roomId}. Color: ${color}`);
+            console.log(`[Reconnection SUCCESS] Player "${playerName}" reassumiu sua vaga como "${color}" (novo socket: ${socket.id})`);
         } else if (!spectateMode) {
             const playerIds = Object.keys(room.players);
+            console.log(`[joinRoom] Sala não cheia e sem modo espectador. Jogadores atuais: ${playerIds.length}`);
             if (playerIds.length < 2) {
                 role = 'player';
                 // First player gets White, second gets Black
@@ -183,18 +191,21 @@ io.on('connection', (socket) => {
                     name: playerName,
                     color: color
                 };
+                console.log(`[joinRoom] Nova vaga atribuída para "${playerName}" como "${color}"`);
             } else {
                 // Room is full, join as spectator
                 room.spectators.push({
                     id: socket.id,
                     name: playerName
                 });
+                console.log(`[joinRoom] Sala cheia (2 jogadores ativos). "${playerName}" entrou como Espectador.`);
             }
         } else {
             room.spectators.push({
                 id: socket.id,
                 name: playerName
             });
+            console.log(`[joinRoom] Entrada forçada em modo Espectador para "${playerName}".`);
         }
 
         // Save updated state to Redis

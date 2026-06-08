@@ -1291,31 +1291,12 @@ function updatePlayersHUD() {
     // Find opponent player object
     const opponent = Object.values(players).find(p => p.id !== socket.id);
 
-    // Render self player profile
+    // Render profiles based on role
     if (myRole === 'spectator') {
-        selfNameEl.textContent = playerName;
-        selfRoleEl.textContent = "Espectador";
-        selfBadge.textContent = "👁️";
-        selfBadge.className = "avatar-circle self-color-badge";
-    } else {
-        selfNameEl.textContent = playerName;
-        selfRoleEl.textContent = myColor === 'w' ? "Jogador (Brancas)" : "Jogador (Pretas)";
-        selfBadge.textContent = myColor === 'w' ? "♔" : "♚";
-        selfBadge.className = `avatar-circle self-color-badge ${myColor === 'w' ? 'white' : 'black'}`;
-    }
-
-    // Render opponent player profile
-    if (opponent) {
-        oppNameEl.textContent = opponent.name;
-        oppStatusEl.textContent = "On-line";
-        oppStatusEl.className = "player-status connected";
-        oppBadge.textContent = opponent.color === 'w' ? "♔" : "♚";
-        oppBadge.className = `avatar-circle opponent-color-badge ${opponent.color === 'w' ? 'white' : 'black'}`;
-    } else if (myRole === 'spectator') {
-        // If spectator, find both players
+        // For spectators, show player 1 at bottom, player 2 at top
         const playerList = Object.values(players);
+        
         if (playerList.length > 0) {
-            // Display player 1 as self, player 2 as opponent
             const p1 = playerList[0];
             selfNameEl.textContent = p1.name;
             selfRoleEl.textContent = p1.color === 'w' ? "Jogador (Brancas)" : "Jogador (Pretas)";
@@ -1337,6 +1318,11 @@ function updatePlayersHUD() {
                 oppBadge.className = "avatar-circle opponent-color-badge";
             }
         } else {
+            selfNameEl.textContent = playerName;
+            selfRoleEl.textContent = "Espectador";
+            selfBadge.textContent = "👁️";
+            selfBadge.className = "avatar-circle self-color-badge";
+
             oppNameEl.textContent = "Aguardando jogadores...";
             oppStatusEl.textContent = "Off-line";
             oppStatusEl.className = "player-status disconnected";
@@ -1344,11 +1330,25 @@ function updatePlayersHUD() {
             oppBadge.className = "avatar-circle opponent-color-badge";
         }
     } else {
-        oppNameEl.textContent = "Aguardando oponente...";
-        oppStatusEl.textContent = "Pendente";
-        oppStatusEl.className = "player-status disconnected";
-        oppBadge.textContent = "?";
-        oppBadge.className = "avatar-circle opponent-color-badge";
+        // For actual players
+        selfNameEl.textContent = playerName;
+        selfRoleEl.textContent = myColor === 'w' ? "Jogador (Brancas)" : "Jogador (Pretas)";
+        selfBadge.textContent = myColor === 'w' ? "♔" : "♚";
+        selfBadge.className = `avatar-circle self-color-badge ${myColor === 'w' ? 'white' : 'black'}`;
+
+        if (opponent) {
+            oppNameEl.textContent = opponent.name;
+            oppStatusEl.textContent = "On-line";
+            oppStatusEl.className = "player-status connected";
+            oppBadge.textContent = opponent.color === 'w' ? "♔" : "♚";
+            oppBadge.className = `avatar-circle opponent-color-badge ${opponent.color === 'w' ? 'white' : 'black'}`;
+        } else {
+            oppNameEl.textContent = "Aguardando oponente...";
+            oppStatusEl.textContent = "Pendente";
+            oppStatusEl.className = "player-status disconnected";
+            oppBadge.textContent = "?";
+            oppBadge.className = "avatar-circle opponent-color-badge";
+        }
     }
 }
 
