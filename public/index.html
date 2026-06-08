@@ -158,9 +158,16 @@
                 <aside class="game-sidebar glass">
                     <!-- Room Info Panel -->
                     <div class="sidebar-section room-info-panel">
-                        <div class="room-code-badge">
-                            <span class="badge-label">Sala:</span>
-                            <span id="room-code-display" class="badge-value">XXXX</span>
+                        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+                            <div class="room-code-badge">
+                                <span class="badge-label">Sala:</span>
+                                <span id="room-code-display" class="badge-value">XXXX</span>
+                            </div>
+                            <!-- Match Timer -->
+                            <div id="match-timer" class="match-timer" title="Tempo de partida">
+                                <span class="timer-icon">⏱</span>
+                                <span id="timer-display">00:00</span>
+                            </div>
                         </div>
                         <div id="turn-indicator" class="turn-indicator">
                             <span class="turn-dot"></span>

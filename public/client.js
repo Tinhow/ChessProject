@@ -19,6 +19,10 @@ let isSinglePlayerMode = false;
 let botColor = null;
 let botElo = 1200;
 
+// Match Timer
+let timerSeconds = 0;
+let timerInterval = null;
+
 // Audio context (initialized on first interaction)
 let audioCtx = null;
 
@@ -147,6 +151,52 @@ async function loadNetworkInfo() {
 }
 
 // ============================================
+// MATCH TIMER
+// ============================================
+
+function startMatchTimer(resumeSeconds = 0) {
+    stopMatchTimer();
+    timerSeconds = resumeSeconds;
+    const timerEl = document.getElementById('match-timer');
+    const displayEl = document.getElementById('timer-display');
+    if (timerEl) timerEl.classList.add('running');
+
+    timerInterval = setInterval(() => {
+        timerSeconds++;
+        const mm = String(Math.floor(timerSeconds / 60)).padStart(2, '0');
+        const ss = String(timerSeconds % 60).padStart(2, '0');
+        if (displayEl) displayEl.textContent = `${mm}:${ss}`;
+
+        // Turn red after 60 minutes
+        if (timerEl) {
+            if (timerSeconds >= 3600) {
+                timerEl.classList.add('urgent');
+            } else {
+                timerEl.classList.remove('urgent');
+            }
+        }
+    }, 1000);
+}
+
+function stopMatchTimer() {
+    if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+    }
+    const timerEl = document.getElementById('match-timer');
+    if (timerEl) timerEl.classList.remove('running');
+}
+
+function resetMatchTimer() {
+    stopMatchTimer();
+    timerSeconds = 0;
+    const displayEl = document.getElementById('timer-display');
+    if (displayEl) displayEl.textContent = '00:00';
+    const timerEl = document.getElementById('match-timer');
+    if (timerEl) timerEl.classList.remove('urgent');
+}
+
+// ============================================
 // SAVE STATE (localStorage)
 // ============================================
 
@@ -165,6 +215,7 @@ function saveGameState() {
             botColor,
             botElo,
             lastMoveSquares,
+            timerSeconds,
             savedAt: Date.now()
         };
         localStorage.setItem(SAVE_KEY, JSON.stringify(state));
@@ -262,12 +313,19 @@ function restoreGameState(state) {
         updateTurnIndicator();
         renderBoard();
 
+        // Resume timer from saved seconds
+        startMatchTimer(state.timerSeconds || 0);
+
+        // Disconnect socket - solo mode is fully offline
+        socket.disconnect();
+
         // If it's bot's turn, trigger bot move
         if (game.turn() === botColor && !game.game_over()) {
             setTimeout(triggerBotMove, 1000);
         }
     } else {
         // Restore multiplayer: rejoin the room
+        if (!socket.connected) socket.connect();
         document.getElementById('player-name').value = playerName;
         document.getElementById('room-code-input').value = roomId;
         addSystemMessage(`♻️ Reconectando à sala ${roomId}...`);
@@ -393,6 +451,9 @@ function setupEventHandlers() {
         if (myColor === 'b') {
             setTimeout(triggerBotMove, 1200);
         }
+
+        // Start match timer
+        startMatchTimer();
 
         // Disconnect socket - solo mode is fully offline, no server needed
         socket.disconnect();
@@ -611,6 +672,7 @@ function returnToLobby() {
     hideModal('game-over-modal');
     
     clearGameState();
+    resetMatchTimer();
     
     // Ensure socket is connected when returning to lobby
     if (!socket.connected) {
@@ -1104,6 +1166,7 @@ function checkGameStatus() {
 }
 
 function showGameOverModal(title, reason) {
+    stopMatchTimer();
     document.getElementById('game-over-title').textContent = title;
     document.getElementById('game-over-reason').textContent = reason;
     
@@ -1340,8 +1403,14 @@ socket.on('roomJoined', (data) => {
 
     addSystemMessage(`Você entrou na sala ${roomId} como ${myRole === 'player' ? (myColor === 'w' ? 'Brancas' : 'Pretas') : 'Espectador'}.`);
     
-    // Save multiplayer session for reconnection
-    if (myRole === 'player') saveGameState();
+    // Start timer when both players are present, or resume if reconnecting
+    if (myRole === 'player') {
+        const savedRaw = localStorage.getItem(SAVE_KEY);
+        const savedState = savedRaw ? JSON.parse(savedRaw) : null;
+        const resumeSecs = (savedState && savedState.roomId === roomId) ? (savedState.timerSeconds || 0) : 0;
+        startMatchTimer(resumeSecs);
+        saveGameState();
+    }
 });
 
 socket.on('playerJoined', (data) => {

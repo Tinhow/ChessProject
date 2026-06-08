@@ -695,6 +695,38 @@ body {
     font-size: 0.9rem;
 }
 
+/* Match timer widget */
+.match-timer {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--color-border);
+    padding: 8px 12px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 0.05em;
+}
+
+.match-timer.running .timer-icon {
+    display: inline-block;
+    animation: timer-pulse 1s ease-in-out infinite;
+}
+
+.match-timer.urgent {
+    border-color: rgba(239, 68, 68, 0.5);
+    color: #ef4444;
+}
+
+@keyframes timer-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.5; transform: scale(1.15); }
+}
+
+
 .badge-label {
     color: var(--color-text-muted);
 }
