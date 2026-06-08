@@ -16,6 +16,79 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Store room states
 const rooms = {};
 
+// Redis integration for persistent multiplayer rooms
+const Redis = require('ioredis');
+let redisClient = null;
+
+if (process.env.REDIS_URL) {
+    console.log('[Redis] Conectando ao Redis utilizando a variável REDIS_URL...');
+    redisClient = new Redis(process.env.REDIS_URL);
+    redisClient.on('error', (err) => {
+        console.error('[Redis] Erro na conexão do Redis:', err);
+    });
+    redisClient.on('connect', () => {
+        console.log('[Redis] Conectado com sucesso ao Redis/Valkey!');
+    });
+} else {
+    console.log('[Redis] REDIS_URL não detectada. Armazenamento em memória local apenas.');
+}
+
+const ROOM_TTL = 24 * 60 * 60; // 24 hours in seconds
+
+async function saveRoomToRedis(roomId) {
+    const room = rooms[roomId];
+    if (!room || !redisClient) return;
+    try {
+        const serialized = JSON.stringify({
+            id: room.id,
+            players: room.players,
+            spectators: room.spectators,
+            fen: room.fen,
+            moves: room.moves,
+            rematchVotes: Array.from(room.rematchVotes || [])
+        });
+        await redisClient.set(`room:${roomId}`, serialized, 'EX', ROOM_TTL);
+    } catch (err) {
+        console.error(`[Redis] Erro ao salvar sala ${roomId}:`, err);
+    }
+}
+
+async function loadRoomFromRedis(roomId) {
+    // If room already exists in memory, use it
+    if (rooms[roomId]) return rooms[roomId];
+    if (!redisClient) return null;
+    try {
+        const data = await redisClient.get(`room:${roomId}`);
+        if (!data) return null;
+        
+        const parsed = JSON.parse(data);
+        rooms[roomId] = {
+            id: parsed.id,
+            players: parsed.players || {},
+            spectators: parsed.spectators || [],
+            fen: parsed.fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+            moves: parsed.moves || [],
+            rematchVotes: new Set(parsed.rematchVotes || [])
+        };
+        console.log(`[Redis] Sala ${roomId} restaurada com sucesso do Redis.`);
+        return rooms[roomId];
+    } catch (err) {
+        console.error(`[Redis] Erro ao carregar sala ${roomId}:`, err);
+        return null;
+    }
+}
+
+async function deleteRoomFromRedis(roomId) {
+    if (!redisClient) return;
+    try {
+        await redisClient.del(`room:${roomId}`);
+        console.log(`[Redis] Sala ${roomId} deletada do Redis.`);
+    } catch (err) {
+        console.error(`[Redis] Erro ao deletar sala ${roomId}:`, err);
+    }
+}
+
+
 // Helper to get local IP address
 function getLocalIPAddress() {
     const interfaces = os.networkInterfaces();
@@ -42,7 +115,7 @@ io.on('connection', (socket) => {
     console.log(`User connected: ${socket.id}`);
     let currentRoomId = null;
 
-    socket.on('joinRoom', ({ roomId, playerName, spectateMode }) => {
+    socket.on('joinRoom', async ({ roomId, playerName, spectateMode }) => {
         roomId = roomId.trim().toUpperCase();
         playerName = playerName ? playerName.trim() : `Jogador_${socket.id.substring(0, 4)}`;
 
@@ -54,7 +127,10 @@ io.on('connection', (socket) => {
         socket.join(roomId);
         currentRoomId = roomId;
 
-        if (!rooms[roomId]) {
+        // Try to load the room from Redis first
+        let room = await loadRoomFromRedis(roomId);
+
+        if (!room) {
             rooms[roomId] = {
                 id: roomId,
                 players: {},
@@ -63,9 +139,9 @@ io.on('connection', (socket) => {
                 moves: [],
                 rematchVotes: new Set()
             };
+            room = rooms[roomId];
         }
 
-        const room = rooms[roomId];
         let role = 'spectator';
         let color = null;
 
@@ -86,6 +162,9 @@ io.on('connection', (socket) => {
                 name: playerName
             });
         }
+
+        // Save updated state to Redis
+        await saveRoomToRedis(roomId);
 
         // Send current room state to the joining socket
         socket.emit('roomJoined', {
@@ -109,13 +188,16 @@ io.on('connection', (socket) => {
         console.log(`User ${playerName} (${socket.id}) joined room ${roomId} as ${role} (${color})`);
     });
 
-    socket.on('makeMove', (moveData) => {
+    socket.on('makeMove', async (moveData) => {
         if (!currentRoomId || !rooms[currentRoomId]) return;
         const room = rooms[currentRoomId];
         
         // Save move and update FEN
         room.fen = moveData.fen;
         room.moves.push(moveData.move);
+        
+        // Save state to Redis
+        await saveRoomToRedis(currentRoomId);
         
         // Broadcast the move to everyone else in the room
         socket.to(currentRoomId).emit('moveMade', moveData);
@@ -162,18 +244,20 @@ io.on('connection', (socket) => {
         });
     });
 
-    socket.on('drawResponse', ({ accepted }) => {
+    socket.on('drawResponse', async ({ accepted }) => {
         if (!currentRoomId || !rooms[currentRoomId]) return;
         if (accepted) {
             io.to(currentRoomId).emit('gameOver', {
                 type: 'draw-agreement'
             });
+            // Delete game from Redis as it is completed
+            await deleteRoomFromRedis(currentRoomId);
         } else {
             socket.to(currentRoomId).emit('drawDeclined');
         }
     });
 
-    socket.on('requestRematch', () => {
+    socket.on('requestRematch', async () => {
         if (!currentRoomId || !rooms[currentRoomId]) return;
         const room = rooms[currentRoomId];
         
@@ -187,6 +271,9 @@ io.on('connection', (socket) => {
             voterName: room.players[socket.id].name
         });
 
+        // Save votes to Redis
+        await saveRoomToRedis(currentRoomId);
+ 
         // Check if both players agreed
         const activePlayerIds = Object.keys(room.players);
         if (activePlayerIds.every(id => room.rematchVotes.has(id))) {
@@ -204,6 +291,8 @@ io.on('connection', (socket) => {
                 p2.color = tempColor;
             }
 
+            await saveRoomToRedis(currentRoomId);
+ 
             io.to(currentRoomId).emit('gameRestarted', {
                 fen: room.fen,
                 players: room.players
@@ -211,7 +300,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
         console.log(`User disconnected: ${socket.id}`);
         if (currentRoomId && rooms[currentRoomId]) {
             const room = rooms[currentRoomId];
@@ -244,11 +333,15 @@ io.on('connection', (socket) => {
                 }
             }
 
+            // Save updated state after someone disconnected (e.g. spectator left, or player disconnected but can rejoin)
+            await saveRoomToRedis(currentRoomId);
+ 
             // If room is completely empty, delete it after a small delay
             if (Object.keys(room.players).length === 0 && room.spectators.length === 0) {
-                setTimeout(() => {
+                setTimeout(async () => {
                     if (rooms[currentRoomId] && Object.keys(rooms[currentRoomId].players).length === 0 && rooms[currentRoomId].spectators.length === 0) {
                         delete rooms[currentRoomId];
+                        await deleteRoomFromRedis(currentRoomId);
                         console.log(`Room ${currentRoomId} deleted due to inactivity.`);
                     }
                 }, 5000);
