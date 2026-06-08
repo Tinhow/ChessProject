@@ -390,12 +390,16 @@ body {
     align-items: center;
     height: 64px;
     border-radius: 12px;
+    overflow: hidden;
 }
 
 .player-profile {
     display: flex;
     align-items: center;
     gap: 12px;
+    overflow: hidden;
+    min-width: 0;
+    flex: 1;
 }
 
 .avatar-circle {
@@ -431,11 +435,18 @@ body {
 .player-meta {
     display: flex;
     flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+    flex: 1;
 }
 
 .player-name {
     font-weight: 600;
     font-size: 1rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
 }
 
 .player-status {
@@ -662,6 +673,10 @@ body {
 
 .game-sidebar {
     width: 320px;
+    min-width: 320px;
+    max-width: 320px;
+    flex-shrink: 0;
+    flex-grow: 0;
     display: flex;
     flex-direction: column;
     padding: 20px;
