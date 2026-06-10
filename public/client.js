@@ -655,6 +655,10 @@ function setupEventHandlers() {
                 addChatMessage(`MiniBot (${botElo} ELO)`, 'bot', `Nova partida iniciada! Agora eu jogo de ${botColor === 'w' ? 'Brancas' : 'Pretas'}. Bom jogo!`);
             }, 600);
             
+            // Start match timer and save state
+            startMatchTimer(0);
+            saveGameState();
+
             if (myColor === 'b') {
                 setTimeout(triggerBotMove, 1200);
             }
