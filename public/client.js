@@ -271,6 +271,7 @@ function loadGameState() {
 
 function restoreGameState(state) {
     initAudio();
+    document.getElementById('game-over-banner').classList.remove('active');
 
     isSinglePlayerMode = state.isSinglePlayerMode;
     myColor = state.myColor;
@@ -387,6 +388,7 @@ function setupEventHandlers() {
 
     btnStartBotGame.addEventListener('click', () => {
         initAudio();
+        document.getElementById('game-over-banner').classList.remove('active');
         const inputName = document.getElementById('player-name').value.trim();
         playerName = inputName || `Jogador_${Math.floor(1000 + Math.random() * 9000)}`;
         
@@ -611,6 +613,7 @@ function setupEventHandlers() {
         if (isSinglePlayerMode) {
             const nextColor = myColor === 'w' ? 'b' : 'w';
             hideModal('game-over-modal');
+            document.getElementById('game-over-banner').classList.remove('active');
             
             myColor = nextColor;
             botColor = myColor === 'w' ? 'b' : 'w';
@@ -656,6 +659,18 @@ function setupEventHandlers() {
     btnGoLobby.addEventListener('click', () => {
         returnToLobby();
     });
+
+    const btnViewBoard = document.getElementById('btn-view-board');
+    btnViewBoard.addEventListener('click', () => {
+        hideModal('game-over-modal');
+        document.getElementById('game-over-banner').classList.add('active');
+    });
+
+    const btnShowOptions = document.getElementById('btn-show-options');
+    btnShowOptions.addEventListener('click', () => {
+        document.getElementById('game-over-banner').classList.remove('active');
+        showModal('game-over-modal');
+    });
 }
 
 // CSS Modal helper
@@ -670,6 +685,7 @@ function hideModal(id) {
 function returnToLobby() {
     hideModal('leave-modal');
     hideModal('game-over-modal');
+    document.getElementById('game-over-banner').classList.remove('active');
     
     clearGameState();
     resetMatchTimer();
@@ -1372,8 +1388,16 @@ socket.on('roomJoined', (data) => {
         document.getElementById('btn-resign').style.display = 'inline-flex';
     }
 
-    // Load board state
-    game = new Chess(data.fen);
+    // Hide game-over banner on new/rejoined room
+    document.getElementById('game-over-banner').classList.remove('active');
+
+    // Load board state and history by replaying moves from initial board state
+    game = new Chess();
+    if (data.moves && data.moves.length > 0) {
+        data.moves.forEach(m => game.move(m));
+    } else if (data.fen) {
+        game = new Chess(data.fen);
+    }
     
     // Automatically flip the board if playing Black
     boardFlipped = (myColor === 'b');
@@ -1507,6 +1531,7 @@ socket.on('rematchRequested', (data) => {
 socket.on('gameRestarted', (data) => {
     // Hide game over screen
     hideModal('game-over-modal');
+    document.getElementById('game-over-banner').classList.remove('active');
 
     // Reset game engine
     game = new Chess(data.fen);

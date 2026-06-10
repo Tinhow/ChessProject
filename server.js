@@ -402,8 +402,8 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`  LAN access:   http://${localIP}:${PORT}`);
     console.log(`===================================================`);
 
-    // Self-ping keep-alive: prevents Render free-tier from hibernating
-    // Only runs in production (Render sets NODE_ENV=production automatically)
+    // Self-ping keep-alive: desativado para utilizar ping externo (ex: UptimeRobot) e evitar quedas periódicas
+    /*
     if (process.env.NODE_ENV === 'production' || process.env.RENDER) {
         const SELF_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
         const PING_INTERVAL = 10 * 60 * 1000; // 10 minutes
@@ -411,6 +411,7 @@ server.listen(PORT, '0.0.0.0', () => {
         setInterval(() => {
             const url = `${SELF_URL}/api/info`;
             http.get(url, (res) => {
+                res.resume(); // Consumir resposta para liberar socket TCP e evitar vazamento
                 console.log(`[keep-alive] Self-ping OK (${res.statusCode}) → ${url}`);
             }).on('error', (err) => {
                 console.warn(`[keep-alive] Self-ping failed: ${err.message}`);
@@ -419,5 +420,6 @@ server.listen(PORT, '0.0.0.0', () => {
 
         console.log(`[keep-alive] Self-ping ativo a cada 10 minutos → ${SELF_URL}`);
     }
+    */
 });
 
