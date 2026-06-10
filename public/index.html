@@ -158,7 +158,7 @@
                 <aside class="game-sidebar glass">
                     <!-- Room Info Panel -->
                     <div class="sidebar-section room-info-panel">
-                        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+                        <div class="room-info-top">
                             <div class="room-code-badge">
                                 <span class="badge-label">Sala:</span>
                                 <span id="room-code-display" class="badge-value">XXXX</span>
@@ -315,6 +315,23 @@
             <div class="modal-buttons" style="margin-top: 10px;">
                 <button id="btn-start-bot-game" class="btn primary-btn">Iniciar Jogo</button>
                 <button id="btn-cancel-bot-setup" class="btn outline-btn">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pawn Promotion Modal -->
+    <div id="promotion-modal" class="modal-overlay">
+        <div class="modal-card glass alert-modal" style="max-width: 420px; text-align: center; gap: 16px;">
+            <h3>👑 Promoção de Peão</h3>
+            <p style="color: var(--color-text-muted); font-size: 0.95rem; margin-bottom: 8px;">Escolha a peça para a qual deseja promover seu peão:</p>
+            <div class="promotion-choices">
+                <button class="promotion-choice-btn" data-piece="q" title="Rainha (Dama)">♛</button>
+                <button class="promotion-choice-btn" data-piece="r" title="Torre">♜</button>
+                <button class="promotion-choice-btn" data-piece="b" title="Bispo">♝</button>
+                <button class="promotion-choice-btn" data-piece="n" title="Cavalo">♞</button>
+            </div>
+            <div class="modal-buttons" style="margin-top: 12px; width: 100%;">
+                <button id="btn-cancel-promotion" class="btn outline-btn" style="width: 100%;">Cancelar Jogada</button>
             </div>
         </div>
     </div>

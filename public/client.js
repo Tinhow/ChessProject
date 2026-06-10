@@ -13,6 +13,7 @@ let boardFlipped = false;
 let players = {};
 let spectators = [];
 let lastMoveSquares = []; // [from, to]
+let pendingPromotionMove = null;
 
 // Offline Bot State
 let isSinglePlayerMode = false;
@@ -679,6 +680,29 @@ function setupEventHandlers() {
         document.getElementById('game-over-banner').classList.remove('active');
         showModal('game-over-modal');
     });
+
+    // Promotion choices wiring
+    const promotionChoiceBtns = document.querySelectorAll('.promotion-choice-btn');
+    promotionChoiceBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const piece = btn.getAttribute('data-piece');
+            if (pendingPromotionMove) {
+                const { from, to } = pendingPromotionMove;
+                pendingPromotionMove = null;
+                hideModal('promotion-modal');
+                makeMove(from, to, piece);
+            }
+        });
+    });
+
+    const btnCancelPromotion = document.getElementById('btn-cancel-promotion');
+    if (btnCancelPromotion) {
+        btnCancelPromotion.addEventListener('click', () => {
+            pendingPromotionMove = null;
+            hideModal('promotion-modal');
+            renderBoard();
+        });
+    }
 }
 
 // CSS Modal helper
@@ -955,17 +979,32 @@ function triggerBotMove() {
 }
 
 // Execute move locally and sync with server
-function makeMove(from, to) {
+function makeMove(from, to, promotion = null) {
     // Clear selection state immediately
     selectedSquare = null;
     possibleMoves = [];
 
-    // Automatically promote to Queen for simplicity
-    const move = game.move({
+    // Check if this move is a promotion
+    const moves = game.moves({ square: from, verbose: true });
+    const isPromotion = moves.some(m => m.to === to && m.promotion);
+
+    if (isPromotion && !promotion) {
+        pendingPromotionMove = { from, to };
+        showModal('promotion-modal');
+        return;
+    }
+
+    const moveOptions = {
         from: from,
-        to: to,
-        promotion: 'q'
-    });
+        to: to
+    };
+    if (promotion) {
+        moveOptions.promotion = promotion;
+    } else if (isPromotion) {
+        moveOptions.promotion = 'q';
+    }
+
+    const move = game.move(moveOptions);
 
     if (move) {
         lastMoveSquares = [from, to];
