@@ -45,6 +45,7 @@ async function saveRoomToRedis(roomId) {
             spectators: room.spectators,
             fen: room.fen,
             moves: room.moves,
+            timerSeconds: room.timerSeconds,
             rematchVotes: Array.from(room.rematchVotes || [])
         });
         await redisClient.set(`room:${roomId}`, serialized, 'EX', ROOM_TTL);
@@ -68,6 +69,7 @@ async function loadRoomFromRedis(roomId) {
             spectators: parsed.spectators || [],
             fen: parsed.fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
             moves: parsed.moves || [],
+            timerSeconds: parsed.timerSeconds || 0,
             rematchVotes: new Set(parsed.rematchVotes || [])
         };
         console.log(`[Redis] Sala ${roomId} restaurada com sucesso do Redis.`);
@@ -85,6 +87,34 @@ async function deleteRoomFromRedis(roomId) {
         console.log(`[Redis] Sala ${roomId} deletada do Redis.`);
     } catch (err) {
         console.error(`[Redis] Erro ao deletar sala ${roomId}:`, err);
+    }
+}
+
+function startRoomTimer(roomId) {
+    const room = rooms[roomId];
+    if (!room || room.timerInterval) return;
+
+    room.timerSeconds = room.timerSeconds || 0;
+    console.log(`[Timer] Iniciando cronômetro para a sala ${roomId} em ${room.timerSeconds}s.`);
+    
+    room.timerInterval = setInterval(async () => {
+        room.timerSeconds++;
+        io.to(roomId).emit('timerUpdate', { timerSeconds: room.timerSeconds });
+
+        // Salvar estado no Redis a cada 10 segundos para persistir o cronômetro
+        if (room.timerSeconds % 10 === 0) {
+            await saveRoomToRedis(roomId);
+        }
+    }, 1000);
+}
+
+function stopRoomTimer(roomId) {
+    const room = rooms[roomId];
+    if (room && room.timerInterval) {
+        console.log(`[Timer] Parando cronômetro para a sala ${roomId} em ${room.timerSeconds}s.`);
+        clearInterval(room.timerInterval);
+        room.timerInterval = null;
+        saveRoomToRedis(roomId);
     }
 }
 
@@ -208,6 +238,11 @@ io.on('connection', (socket) => {
             console.log(`[joinRoom] Entrada forçada em modo Espectador para "${playerName}".`);
         }
 
+        // Se houver exatamente 2 jogadores na sala, inicia o cronômetro do jogo
+        if (Object.keys(room.players).length === 2) {
+            startRoomTimer(roomId);
+        }
+
         // Save updated state to Redis
         await saveRoomToRedis(roomId);
 
@@ -219,7 +254,8 @@ io.on('connection', (socket) => {
             players: room.players,
             spectators: room.spectators,
             fen: room.fen,
-            moves: room.moves
+            moves: room.moves,
+            timerSeconds: room.timerSeconds || 0
         });
 
         // Broadcast to other players in the room
@@ -279,6 +315,13 @@ io.on('connection', (socket) => {
                 winnerColor: resigningPlayer.color === 'w' ? 'b' : 'w',
                 winnerName: Object.values(room.players).find(p => p.id !== socket.id)?.name || 'Oponente'
             });
+            stopRoomTimer(currentRoomId);
+        }
+    });
+
+    socket.on('gameFinished', () => {
+        if (currentRoomId) {
+            stopRoomTimer(currentRoomId);
         }
     });
 
@@ -295,6 +338,7 @@ io.on('connection', (socket) => {
             io.to(currentRoomId).emit('gameOver', {
                 type: 'draw-agreement'
             });
+            stopRoomTimer(currentRoomId);
             // Delete game from Redis as it is completed
             await deleteRoomFromRedis(currentRoomId);
         } else {
@@ -326,6 +370,7 @@ io.on('connection', (socket) => {
             room.fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
             room.moves = [];
             room.rematchVotes.clear();
+            room.timerSeconds = 0; // Reset timer
             
             // Swap colors for a fresh game
             if (activePlayerIds.length === 2) {
@@ -337,6 +382,7 @@ io.on('connection', (socket) => {
             }
 
             await saveRoomToRedis(currentRoomId);
+            startRoomTimer(currentRoomId); // Inicia o timer da revanche
  
             io.to(currentRoomId).emit('gameRestarted', {
                 fen: room.fen,
@@ -353,6 +399,9 @@ io.on('connection', (socket) => {
             if (room.players[socket.id]) {
                 const playerName = room.players[socket.id].name;
                 delete room.players[socket.id];
+                
+                // Pausar o cronômetro da sala se um jogador desconectar
+                stopRoomTimer(currentRoomId);
                 
                 // Notify room
                 io.to(currentRoomId).emit('playerLeft', {
