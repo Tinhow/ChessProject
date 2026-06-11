@@ -1405,11 +1405,10 @@ body {
 }
 
 /* King (Dama) Style */
-.checker-piece.king::after {
-    content: "👑";
-    font-size: 1.3rem;
-    color: #f59e0b;
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
+.checker-piece.king .crown-svg {
+    width: 60%;
+    height: 60%;
+    filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.65));
     animation: goldGlow 2s infinite alternate;
 }
 

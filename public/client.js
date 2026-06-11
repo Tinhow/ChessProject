@@ -423,7 +423,17 @@ function setupEventHandlers() {
             botModeLabels.forEach(l => l.classList.remove('active'));
             label.classList.add('active');
             const radio = label.querySelector('input[type="radio"]');
-            if (radio) radio.checked = true;
+            if (radio) {
+                radio.checked = true;
+                const blackLabel = document.getElementById('bot-color-black-label');
+                if (blackLabel) {
+                    if (radio.value === 'checkers') {
+                        blackLabel.innerHTML = '<input type="radio" name="bot-player-color" value="b" style="display:none;"> 🔴 Vermelhas';
+                    } else {
+                        blackLabel.innerHTML = '<input type="radio" name="bot-player-color" value="b" style="display:none;"> ⚫ Pretas';
+                    }
+                }
+            }
         });
     });
 
@@ -494,7 +504,8 @@ function setupEventHandlers() {
         renderBoard();
 
         setTimeout(() => {
-            addChatMessage(`MiniBot (${botElo} ELO)`, 'bot', `Olá, ${playerName}! Boa sorte na partida! Eu jogo de ${botColor === 'w' ? 'Brancas' : 'Pretas'}.`);
+            const botColorName = botColor === 'w' ? 'Brancas' : (soloGameMode === 'checkers' ? 'Vermelhas' : 'Pretas');
+            addChatMessage(`MiniBot (${botElo} ELO)`, 'bot', `Olá, ${playerName}! Boa sorte na partida! Eu jogo de ${botColorName}.`);
         }, 600);
 
         if (myColor === 'b') {
@@ -697,7 +708,9 @@ function setupEventHandlers() {
             renderBoard();
             
             setTimeout(() => {
-                addChatMessage(`MiniBot (${botElo} ELO)`, 'bot', `Nova partida iniciada! Agora eu jogo de ${botColor === 'w' ? 'Brancas' : 'Pretas'}. Bom jogo!`);
+                const isCheckers = game.constructor.name === 'Checkers';
+                const botColorName = botColor === 'w' ? 'Brancas' : (isCheckers ? 'Vermelhas' : 'Pretas');
+                addChatMessage(`MiniBot (${botElo} ELO)`, 'bot', `Nova partida iniciada! Agora eu jogo de ${botColorName}. Bom jogo!`);
             }, 600);
             
             // Start match timer and save state
@@ -914,6 +927,24 @@ function renderBoard() {
                     pieceEl.className = `checker-piece ${piece.color === 'w' ? 'white' : 'black'}`;
                     if (piece.type === 'k') {
                         pieceEl.classList.add('king');
+                        pieceEl.innerHTML = `
+                            <svg class="crown-svg" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M4 18L2 7L7 12L12 4L17 12L22 7L20 18H4Z" fill="url(#goldGradient)" stroke="#854d0e" stroke-width="1.5" stroke-linejoin="round"/>
+                                <path d="M4 20H20V21H4V20Z" fill="url(#goldGradient)" stroke="#854d0e" stroke-width="1"/>
+                                <circle cx="2" cy="7" r="1" fill="#fef08a"/>
+                                <circle cx="7" cy="12" r="0.75" fill="#fef08a"/>
+                                <circle cx="12" cy="4" r="1.25" fill="#fef08a"/>
+                                <circle cx="17" cy="12" r="0.75" fill="#fef08a"/>
+                                <circle cx="22" cy="7" r="1" fill="#fef08a"/>
+                                <defs>
+                                    <linearGradient id="goldGradient" x1="12" y1="4" x2="12" y2="21" gradientUnits="userSpaceOnUse">
+                                        <stop offset="0%" stop-color="#fbbf24"/>
+                                        <stop offset="50%" stop-color="#f59e0b"/>
+                                        <stop offset="100%" stop-color="#d97706"/>
+                                    </linearGradient>
+                                </defs>
+                            </svg>
+                        `;
                     }
                 } else {
                     pieceEl.className = `piece ${piece.color}`;
@@ -1221,7 +1252,8 @@ function updateTurnIndicator() {
     const isReplaying = currentReplayIndex !== null && currentReplayIndex < game.history().length - 1;
     if (isReplaying) {
         const moveNumber = Math.floor(currentReplayIndex / 2) + 1;
-        const colorName = currentReplayIndex % 2 === 0 ? 'Brancas' : 'Pretas';
+        const isCheckers = game.constructor.name === 'Checkers';
+        const colorName = currentReplayIndex % 2 === 0 ? 'Brancas' : (isCheckers ? 'Vermelhas' : 'Pretas');
         turnText.textContent = `Replay: Lance ${moveNumber} (${colorName})`;
         indicator.className = "turn-indicator";
         return;
@@ -1236,8 +1268,10 @@ function updateTurnIndicator() {
     const currentTurnColor = game.turn();
     const currentTurnName = Object.values(players).find(p => p.color === currentTurnColor)?.name || 'Oponente';
     
+    const isCheckers = game.constructor.name === 'Checkers';
+    const blackColor = isCheckers ? 'Vermelhas' : 'Pretas';
     if (myRole === 'spectator') {
-        turnText.textContent = `Vez das ${currentTurnColor === 'w' ? 'Brancas' : 'Pretas'} (${currentTurnName})`;
+        turnText.textContent = `Vez das ${currentTurnColor === 'w' ? 'Brancas' : blackColor} (${currentTurnName})`;
         indicator.className = "turn-indicator opponent-turn";
     } else if (currentTurnColor === myColor) {
         turnText.textContent = "Sua Vez!";
@@ -1651,6 +1685,9 @@ function updatePlayersHUD() {
     const opponent = Object.values(players).find(p => p.id !== playerId);
 
     // Render profiles based on role
+    const selfColor = (myRole === 'spectator') ? Object.values(players)[0]?.color : myColor;
+    const oppColor = (myRole === 'spectator') ? Object.values(players)[1]?.color : opponent?.color;
+
     if (myRole === 'spectator') {
         // For spectators, show player 1 at bottom, player 2 at top
         const playerList = Object.values(players);
@@ -1658,7 +1695,8 @@ function updatePlayersHUD() {
         if (playerList.length > 0) {
             const p1 = playerList[0];
             selfNameEl.textContent = p1.name;
-            selfRoleEl.textContent = p1.color === 'w' ? "Jogador (Brancas)" : "Jogador (Pretas)";
+            const blackName = isCheckers ? "Vermelhas" : "Pretas";
+            selfRoleEl.textContent = p1.color === 'w' ? "Jogador (Brancas)" : `Jogador (${blackName})`;
             selfBadge.textContent = p1.color === 'w' ? whiteSymbol : blackSymbol;
             selfBadge.className = `avatar-circle self-color-badge ${p1.color === 'w' ? 'white' : 'black'}`;
 
@@ -1691,7 +1729,8 @@ function updatePlayersHUD() {
     } else {
         // For actual players
         selfNameEl.textContent = playerName;
-        selfRoleEl.textContent = myColor === 'w' ? "Jogador (Brancas)" : "Jogador (Pretas)";
+        const blackName = isCheckers ? "Vermelhas" : "Pretas";
+        selfRoleEl.textContent = myColor === 'w' ? "Jogador (Brancas)" : `Jogador (${blackName})`;
         selfBadge.textContent = myColor === 'w' ? whiteSymbol : blackSymbol;
         selfBadge.className = `avatar-circle self-color-badge ${myColor === 'w' ? 'white' : 'black'}`;
 
@@ -1708,6 +1747,38 @@ function updatePlayersHUD() {
             oppBadge.textContent = "?";
             oppBadge.className = "avatar-circle opponent-color-badge";
         }
+    }
+
+    // Apply premium checkers gradient style to HUD badges if in checkers mode
+    if (isCheckers) {
+        if (selfColor === 'w') {
+            selfBadge.style.background = 'radial-gradient(circle at 35% 35%, #ffffff 0%, #cbd5e1 65%, #94a3b8 100%)';
+            selfBadge.style.borderColor = 'rgba(255, 255, 255, 0.65)';
+            selfBadge.style.color = '#0f172a';
+        } else if (selfColor === 'b') {
+            selfBadge.style.background = 'radial-gradient(circle at 35% 35%, #ef4444 0%, #b91c1c 65%, #450a0a 100%)';
+            selfBadge.style.borderColor = 'rgba(239, 68, 68, 0.45)';
+            selfBadge.style.color = '#ffffff';
+        }
+
+        if (oppColor) {
+            if (oppColor === 'w') {
+                oppBadge.style.background = 'radial-gradient(circle at 35% 35%, #ffffff 0%, #cbd5e1 65%, #94a3b8 100%)';
+                oppBadge.style.borderColor = 'rgba(255, 255, 255, 0.65)';
+                oppBadge.style.color = '#0f172a';
+            } else if (oppColor === 'b') {
+                oppBadge.style.background = 'radial-gradient(circle at 35% 35%, #ef4444 0%, #b91c1c 65%, #450a0a 100%)';
+                oppBadge.style.borderColor = 'rgba(239, 68, 68, 0.45)';
+                oppBadge.style.color = '#ffffff';
+            }
+        }
+    } else {
+        selfBadge.style.background = '';
+        selfBadge.style.borderColor = '';
+        selfBadge.style.color = '';
+        oppBadge.style.background = '';
+        oppBadge.style.borderColor = '';
+        oppBadge.style.color = '';
     }
 }
 
@@ -1778,7 +1849,8 @@ socket.on('roomJoined', (data) => {
     document.getElementById('lobby-screen').classList.remove('active');
     document.getElementById('game-screen').classList.add('active');
 
-    addSystemMessage(`Você entrou na sala ${roomId} como ${myRole === 'player' ? (myColor === 'w' ? 'Brancas' : 'Pretas') : 'Espectador'}.`);
+    const colorName = myColor === 'w' ? 'Brancas' : (gameMode === 'checkers' ? 'Vermelhas' : 'Pretas');
+    addSystemMessage(`Você entrou na sala ${roomId} como ${myRole === 'player' ? colorName : 'Espectador'}.`);
     
     // Inicia o cronômetro com o valor oficial do servidor
     startMatchTimer(data.timerSeconds || 0);
