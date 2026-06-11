@@ -85,7 +85,40 @@ const PST = {
 };
 
 // Evaluate the board state
-function evaluateBoard(boardState) {
+function evaluateBoard(boardState, isCheckers = null) {
+    if (isCheckers === null) {
+        isCheckers = (typeof game !== 'undefined' && game && game.constructor.name === 'Checkers');
+    }
+
+    if (isCheckers) {
+        let score = 0;
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                const piece = boardState[r][c];
+                if (piece) {
+                    const value = piece.type === 'k' ? 300 : 100;
+                    let positionalBonus = 0;
+                    if (piece.type === 'p') {
+                        // Encourage pawns to advance towards promotion
+                        positionalBonus = piece.color === 'w' ? (7 - r) * 10 : r * 10;
+                    } else {
+                        // Encourage kings to control the center diagonals
+                        const distFromCenter = Math.abs(3.5 - r) + Math.abs(3.5 - c);
+                        positionalBonus = (8 - distFromCenter) * 5;
+                    }
+                    
+                    const pieceScore = value + positionalBonus;
+                    if (piece.color === 'w') {
+                        score += pieceScore;
+                    } else {
+                        score -= pieceScore;
+                    }
+                }
+            }
+        }
+        return score;
+    }
+
     let score = 0;
     for (let r = 0; r < 8; r++) {
         for (let c = 0; c < 8; c++) {
@@ -112,23 +145,28 @@ function evaluateBoard(boardState) {
 }
 
 // Simple move sorting for alpha-beta pruning optimization
-function sortMoves(moves) {
+function sortMoves(moves, isCheckers = false) {
+    const values = isCheckers ? { p: 100, k: 300 } : PIECE_VALUES;
     return moves.sort((a, b) => {
         let scoreA = 0;
         let scoreB = 0;
         
         if (a.captured) {
-            scoreA = 10 * PIECE_VALUES[a.captured] - PIECE_VALUES[a.piece];
+            const capType = typeof a.captured === 'object' ? a.captured.type : a.captured;
+            scoreA = 10 * (values[capType] || 100) - (values[a.piece] || 100);
         }
         if (b.captured) {
-            scoreB = 10 * PIECE_VALUES[b.captured] - PIECE_VALUES[b.piece];
+            const capType = typeof b.captured === 'object' ? b.captured.type : b.captured;
+            scoreB = 10 * (values[capType] || 100) - (values[b.piece] || 100);
         }
         
-        if (a.san.includes('=')) scoreA += 900;
-        if (b.san.includes('=')) scoreB += 900;
-        
-        if (a.san.includes('+')) scoreA += 50;
-        if (b.san.includes('+')) scoreB += 50;
+        if (!isCheckers) {
+            if (a.san && a.san.includes('=')) scoreA += 900;
+            if (b.san && b.san.includes('=')) scoreB += 900;
+            
+            if (a.san && a.san.includes('+')) scoreA += 50;
+            if (b.san && b.san.includes('+')) scoreB += 50;
+        }
         
         return scoreB - scoreA;
     });
@@ -136,18 +174,19 @@ function sortMoves(moves) {
 
 // Minimax algorithm with Alpha-Beta Pruning
 function minimax(chessGame, depth, alpha, beta, isMaximizing) {
+    const isCheckers = chessGame.constructor.name === 'Checkers';
     if (depth === 0 || chessGame.game_over()) {
-        return evaluateBoard(chessGame.board());
+        return evaluateBoard(chessGame.board(), isCheckers);
     }
     
     const rawMoves = chessGame.moves({ verbose: true });
-    const moves = sortMoves(rawMoves);
+    const moves = sortMoves(rawMoves, isCheckers);
     
     if (isMaximizing) {
         let maxEval = -Infinity;
         for (let i = 0; i < moves.length; i++) {
             chessGame.move(moves[i]);
-            const evaluation = minimax(chessGame, depth - 1, alpha, beta, false);
+            const evaluation = minimax(chessGame, depth - 1, alpha, beta, chessGame.turn() === 'w');
             chessGame.undo();
             maxEval = Math.max(maxEval, evaluation);
             alpha = Math.max(alpha, evaluation);
@@ -160,7 +199,7 @@ function minimax(chessGame, depth, alpha, beta, isMaximizing) {
         let minEval = Infinity;
         for (let i = 0; i < moves.length; i++) {
             chessGame.move(moves[i]);
-            const evaluation = minimax(chessGame, depth - 1, alpha, beta, true);
+            const evaluation = minimax(chessGame, depth - 1, alpha, beta, chessGame.turn() === 'w');
             chessGame.undo();
             minEval = Math.min(minEval, evaluation);
             beta = Math.min(beta, evaluation);
@@ -201,7 +240,8 @@ function getBotMove(chessGame, elo, botColor) {
         return rawMoves[randIndex];
     }
     
-    const moves = sortMoves(rawMoves);
+    const isCheckers = chessGame.constructor.name === 'Checkers';
+    const moves = sortMoves(rawMoves, isCheckers);
     let bestMove = null;
     const isBotWhite = (botColor === 'w');
     
@@ -209,7 +249,7 @@ function getBotMove(chessGame, elo, botColor) {
         let bestValue = -Infinity;
         for (let i = 0; i < moves.length; i++) {
             chessGame.move(moves[i]);
-            const boardValue = minimax(chessGame, searchDepth - 1, -Infinity, Infinity, false);
+            const boardValue = minimax(chessGame, searchDepth - 1, -Infinity, Infinity, chessGame.turn() === 'w');
             chessGame.undo();
             
             if (boardValue > bestValue) {
@@ -221,7 +261,7 @@ function getBotMove(chessGame, elo, botColor) {
         let bestValue = Infinity;
         for (let i = 0; i < moves.length; i++) {
             chessGame.move(moves[i]);
-            const boardValue = minimax(chessGame, searchDepth - 1, -Infinity, Infinity, true);
+            const boardValue = minimax(chessGame, searchDepth - 1, -Infinity, Infinity, chessGame.turn() === 'w');
             chessGame.undo();
             
             if (boardValue < bestValue) {

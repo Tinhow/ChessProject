@@ -2,6 +2,11 @@
 const socket = io();
 
 // Game State
+let playerId = localStorage.getItem('chess_player_id');
+if (!playerId) {
+    playerId = 'p_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    localStorage.setItem('chess_player_id', playerId);
+}
 let game = new Chess();
 let roomId = null;
 let playerName = '';
@@ -216,6 +221,7 @@ function saveGameState() {
     try {
         const state = {
             isSinglePlayerMode,
+            gameMode: game.constructor.name === 'Checkers' ? 'checkers' : 'chess',
             fen: game.fen(),
             moves: game.history({ verbose: true }),
             myColor,
@@ -254,9 +260,10 @@ function loadGameState() {
         const resumeBanner = document.getElementById('resume-banner');
         if (!resumeBanner) return;
 
+        const gameMode = state.gameMode || 'chess';
         const modeLabel = state.isSinglePlayerMode
-            ? `🤖 Solo vs MiniBot (${state.botElo} ELO)`
-            : `🌐 Sala ${state.roomId}`;
+            ? `🤖 Solo vs MiniBot (${state.botElo} ELO) · ${gameMode === 'checkers' ? 'Damas' : 'Xadrez'}`
+            : `🌐 Sala ${state.roomId} · ${gameMode === 'checkers' ? 'Damas' : 'Xadrez'}`;
         const colorLabel = state.myColor === 'w' ? '⚪ Brancas' : '⚫ Pretas';
         const movesCount = state.moves ? state.moves.length : 0;
 
@@ -292,15 +299,17 @@ function restoreGameState(state) {
     botElo = state.botElo;
     lastMoveSquares = state.lastMoveSquares || [];
 
+    const gameMode = state.gameMode || 'chess';
+
     if (isSinglePlayerMode) {
         // Restore solo game directly
-        game = new Chess();
+        game = gameMode === 'checkers' ? new Checkers() : new Chess();
         if (state.moves && state.moves.length > 0) {
             state.moves.forEach(m => game.move(m));
         }
 
         players = {};
-        players[socket.id] = { id: socket.id, name: playerName, color: myColor };
+        players[playerId] = { id: playerId, name: playerName, color: myColor };
         players['bot'] = { id: 'bot', name: `MiniBot (${botElo} ELO)`, color: botColor };
         spectators = [];
 
@@ -342,7 +351,7 @@ function restoreGameState(state) {
         document.getElementById('player-name').value = playerName;
         document.getElementById('room-code-input').value = roomId;
         addSystemMessage(`♻️ Reconectando à sala ${roomId}...`);
-        socket.emit('joinRoom', { roomId, playerName });
+        socket.emit('joinRoom', { roomId, playerName, playerId });
     }
 }
 
@@ -398,11 +407,32 @@ function setupEventHandlers() {
         });
     });
 
+    const lobbyModeLabels = document.querySelectorAll('.game-mode-select-label');
+    lobbyModeLabels.forEach(label => {
+        label.addEventListener('click', () => {
+            lobbyModeLabels.forEach(l => l.classList.remove('active'));
+            label.classList.add('active');
+            const radio = label.querySelector('input[type="radio"]');
+            if (radio) radio.checked = true;
+        });
+    });
+
+    const botModeLabels = document.querySelectorAll('.bot-game-mode-select-label');
+    botModeLabels.forEach(label => {
+        label.addEventListener('click', () => {
+            botModeLabels.forEach(l => l.classList.remove('active'));
+            label.classList.add('active');
+            const radio = label.querySelector('input[type="radio"]');
+            if (radio) radio.checked = true;
+        });
+    });
+
     btnStartBotGame.addEventListener('click', () => {
         initAudio();
         document.getElementById('game-over-banner').classList.remove('active');
         const inputName = document.getElementById('player-name').value.trim();
         playerName = inputName || `Jogador_${Math.floor(1000 + Math.random() * 9000)}`;
+        localStorage.setItem('chess_player_name', playerName);
         
         let selectedColor = 'w';
         const checkedRadio = document.querySelector('input[name="bot-player-color"]:checked');
@@ -414,6 +444,9 @@ function setupEventHandlers() {
         }
 
         const selectedElo = parseInt(document.getElementById('bot-elo-select').value);
+        
+        const botCheckedModeRadio = document.querySelector('input[name="bot-game-mode"]:checked');
+        const soloGameMode = botCheckedModeRadio ? botCheckedModeRadio.value : 'chess';
 
         hideModal('bot-setup-modal');
 
@@ -429,14 +462,14 @@ function setupEventHandlers() {
         possibleMoves = [];
 
         players = {};
-        players[socket.id] = { id: socket.id, name: playerName, color: myColor };
+        players[playerId] = { id: playerId, name: playerName, color: myColor };
         players['bot'] = { id: 'bot', name: `MiniBot (${botElo} ELO)`, color: botColor };
         spectators = [];
 
-        game = new Chess();
+        game = soloGameMode === 'checkers' ? new Checkers() : new Chess();
 
         document.getElementById('moves-history-list').innerHTML = '';
-        document.getElementById('chat-messages').innerHTML = '<div class="chat-system">Partida Solo Iniciada!</div>';
+        document.getElementById('chat-messages').innerHTML = `<div class="chat-system">Partida Solo de ${soloGameMode === 'checkers' ? 'Damas' : 'Xadrez'} Iniciada!</div>`;
         
         document.getElementById('btn-draw').style.display = 'inline-flex';
         document.getElementById('btn-resign').style.display = 'inline-flex';
@@ -479,18 +512,23 @@ function setupEventHandlers() {
         initAudio();
         const inputName = document.getElementById('player-name').value.trim();
         playerName = inputName || `Host_${Math.floor(1000 + Math.random() * 9000)}`;
+        localStorage.setItem('chess_player_name', playerName);
         
         // Generate random room code
         const code = Math.random().toString(36).substring(2, 6).toUpperCase();
         roomId = code;
 
-        socket.emit('joinRoom', { roomId, playerName });
+        const checkedRadio = document.querySelector('input[name="lobby-game-mode"]:checked');
+        const gameMode = checkedRadio ? checkedRadio.value : 'chess';
+
+        socket.emit('joinRoom', { roomId, playerName, playerId, gameMode });
     });
 
     btnJoinRoom.addEventListener('click', () => {
         initAudio();
         const inputName = document.getElementById('player-name').value.trim();
         playerName = inputName || `Player_${Math.floor(1000 + Math.random() * 9000)}`;
+        localStorage.setItem('chess_player_name', playerName);
         
         const codeInput = document.getElementById('room-code-input').value.trim().toUpperCase();
         if (!codeInput) {
@@ -500,7 +538,7 @@ function setupEventHandlers() {
         roomId = codeInput;
 
         const spectateMode = document.getElementById('spectate-mode-checkbox').checked;
-        socket.emit('joinRoom', { roomId, playerName, spectateMode });
+        socket.emit('joinRoom', { roomId, playerName, playerId, spectateMode });
     });
 
     chatForm.addEventListener('submit', (e) => {
@@ -641,10 +679,10 @@ function setupEventHandlers() {
             }
             
             players = {};
-            players[socket.id] = { id: socket.id, name: playerName, color: myColor };
+            players[playerId] = { id: playerId, name: playerName, color: myColor };
             players['bot'] = { id: 'bot', name: `MiniBot (${botElo} ELO)`, color: botColor };
             
-            game = new Chess();
+            game = (game.constructor.name === 'Checkers') ? new Checkers() : new Chess();
             lastMoveSquares = [];
             selectedSquare = null;
             possibleMoves = [];
@@ -748,6 +786,7 @@ function setupEventHandlers() {
     const movesHistoryList = document.getElementById('moves-history-list');
     if (movesHistoryList) {
         movesHistoryList.addEventListener('click', (e) => {
+            if (!game.game_over()) return; // Replay is only available in the end game
             const clickable = e.target.closest('.move-clickable');
             if (clickable) {
                 const index = parseInt(clickable.getAttribute('data-index'));
@@ -820,7 +859,7 @@ function renderBoard() {
     let displayLastMoveSquares = lastMoveSquares;
 
     if (isReplaying) {
-        const tempGame = new Chess();
+        const tempGame = game.constructor.name === 'Checkers' ? new Checkers() : new Chess();
         const moves = game.history({ verbose: true });
         for (let i = 0; i <= currentReplayIndex; i++) {
             tempGame.move(moves[i]);
@@ -871,16 +910,22 @@ function renderBoard() {
             // Draw Piece
             if (piece) {
                 const pieceEl = document.createElement('div');
-                pieceEl.className = `piece ${piece.color}`;
-                
-                const imgEl = document.createElement('img');
-                const pName = piece.color + piece.type.toUpperCase();
-                imgEl.src = `https://lichess1.org/assets/piece/cburnett/${pName}.svg`;
-                imgEl.alt = pName;
-                imgEl.style.width = '90%';
-                imgEl.style.height = '90%';
-                imgEl.style.pointerEvents = 'none';
-                pieceEl.appendChild(imgEl);
+                if (game.constructor.name === 'Checkers') {
+                    pieceEl.className = `checker-piece ${piece.color === 'w' ? 'white' : 'black'}`;
+                    if (piece.type === 'k') {
+                        pieceEl.classList.add('king');
+                    }
+                } else {
+                    pieceEl.className = `piece ${piece.color}`;
+                    const imgEl = document.createElement('img');
+                    const pName = piece.color + piece.type.toUpperCase();
+                    imgEl.src = `https://lichess1.org/assets/piece/cburnett/${pName}.svg`;
+                    imgEl.alt = pName;
+                    imgEl.style.width = '90%';
+                    imgEl.style.height = '90%';
+                    imgEl.style.pointerEvents = 'none';
+                    pieceEl.appendChild(imgEl);
+                }
                 
                 // Set drag properties (disabled during replay)
                 if (!isReplaying && myRole === 'player' && myColor === piece.color && activeGameInstance.turn() === myColor) {
@@ -1052,6 +1097,11 @@ function triggerBotMove() {
                     clearGameState();
                 }
                 checkGameStatus();
+                
+                // If it is still botColor, trigger another move for checkers combo
+                if (game.turn() === botColor && !game.game_over()) {
+                    setTimeout(triggerBotMove, 600);
+                }
             }
         }
     }, 150);
@@ -1239,10 +1289,24 @@ function updateNavigationButtonsState() {
     const btnPrev = document.getElementById('btn-replay-prev');
     const btnNext = document.getElementById('btn-replay-next');
     const btnLast = document.getElementById('btn-replay-last');
+    const listEl = document.getElementById('moves-history-list');
 
     if (!btnFirst || !btnPrev || !btnNext || !btnLast) return;
 
     const historyLength = game.history().length;
+    const isGameOver = game.game_over();
+
+    // Replay is only enabled in the end game
+    if (!isGameOver) {
+        btnFirst.disabled = true;
+        btnPrev.disabled = true;
+        btnNext.disabled = true;
+        btnLast.disabled = true;
+        if (listEl) listEl.classList.remove('replay-enabled');
+        return;
+    }
+
+    if (listEl) listEl.classList.add('replay-enabled');
 
     if (historyLength === 0) {
         btnFirst.disabled = true;
@@ -1263,12 +1327,19 @@ function updateNavigationButtonsState() {
 
 // Compute captured pieces from initial count
 function updateCapturedPieces() {
-    const startCount = {
+    const isCheckers = game.constructor.name === 'Checkers';
+    const startCount = isCheckers ? {
+        w: { p: 12 },
+        b: { p: 12 }
+    } : {
         w: { p: 8, n: 2, b: 2, r: 2, q: 1 },
         b: { p: 8, n: 2, b: 2, r: 2, q: 1 }
     };
     
-    const currentCount = {
+    const currentCount = isCheckers ? {
+        w: { p: 0 },
+        b: { p: 0 }
+    } : {
         w: { p: 0, n: 0, b: 0, r: 0, q: 0 },
         b: { p: 0, n: 0, b: 0, r: 0, q: 0 }
     };
@@ -1277,17 +1348,24 @@ function updateCapturedPieces() {
     for (let r = 0; r < 8; r++) {
         for (let c = 0; c < 8; c++) {
             const piece = board[r][c];
-            if (piece && piece.type !== 'k') {
-                currentCount[piece.color][piece.type]++;
+            if (piece) {
+                if (isCheckers) {
+                    currentCount[piece.color].p++;
+                } else {
+                    if (piece.type !== 'k') {
+                        currentCount[piece.color][piece.type]++;
+                    }
+                }
             }
         }
     }
 
     const whiteCaptured = [];
     const blackCaptured = [];
+    const pieceTypes = isCheckers ? ['p'] : ['p', 'n', 'b', 'r', 'q'];
 
     // Missing white pieces were captured by Black
-    for (const type of ['p', 'n', 'b', 'r', 'q']) {
+    for (const type of pieceTypes) {
         const diff = startCount.w[type] - currentCount.w[type];
         for (let i = 0; i < diff; i++) {
             whiteCaptured.push({ color: 'w', type });
@@ -1295,7 +1373,7 @@ function updateCapturedPieces() {
     }
 
     // Missing black pieces were captured by White
-    for (const type of ['p', 'n', 'b', 'r', 'q']) {
+    for (const type of pieceTypes) {
         const diff = startCount.b[type] - currentCount.b[type];
         for (let i = 0; i < diff; i++) {
             blackCaptured.push({ color: 'b', type });
@@ -1320,26 +1398,48 @@ function updateCapturedPieces() {
     myCapturedList.forEach(p => {
         const el = document.createElement('div');
         el.className = 'captured-icon';
-        const imgEl = document.createElement('img');
-        const pName = p.color + p.type.toUpperCase();
-        imgEl.src = `https://lichess1.org/assets/piece/cburnett/${pName}.svg`;
-        imgEl.alt = pName;
-        imgEl.style.width = '100%';
-        imgEl.style.height = '100%';
-        el.appendChild(imgEl);
+        if (isCheckers) {
+            const pieceDisc = document.createElement('div');
+            pieceDisc.className = `checker-piece ${p.color === 'w' ? 'white' : 'black'}`;
+            pieceDisc.style.width = '100%';
+            pieceDisc.style.height = '100%';
+            pieceDisc.style.margin = '0';
+            pieceDisc.style.borderWidth = '1.5px';
+            pieceDisc.style.boxShadow = '0 2px 5px rgba(0,0,0,0.3)';
+            el.appendChild(pieceDisc);
+        } else {
+            const imgEl = document.createElement('img');
+            const pName = p.color + p.type.toUpperCase();
+            imgEl.src = `https://lichess1.org/assets/piece/cburnett/${pName}.svg`;
+            imgEl.alt = pName;
+            imgEl.style.width = '100%';
+            imgEl.style.height = '100%';
+            el.appendChild(imgEl);
+        }
         selfCapturedEl.appendChild(el);
     });
 
     oppCapturedList.forEach(p => {
         const el = document.createElement('div');
         el.className = 'captured-icon';
-        const imgEl = document.createElement('img');
-        const pName = p.color + p.type.toUpperCase();
-        imgEl.src = `https://lichess1.org/assets/piece/cburnett/${pName}.svg`;
-        imgEl.alt = pName;
-        imgEl.style.width = '100%';
-        imgEl.style.height = '100%';
-        el.appendChild(imgEl);
+        if (isCheckers) {
+            const pieceDisc = document.createElement('div');
+            pieceDisc.className = `checker-piece ${p.color === 'w' ? 'white' : 'black'}`;
+            pieceDisc.style.width = '100%';
+            pieceDisc.style.height = '100%';
+            pieceDisc.style.margin = '0';
+            pieceDisc.style.borderWidth = '1.5px';
+            pieceDisc.style.boxShadow = '0 2px 5px rgba(0,0,0,0.3)';
+            el.appendChild(pieceDisc);
+        } else {
+            const imgEl = document.createElement('img');
+            const pName = p.color + p.type.toUpperCase();
+            imgEl.src = `https://lichess1.org/assets/piece/cburnett/${pName}.svg`;
+            imgEl.alt = pName;
+            imgEl.style.width = '100%';
+            imgEl.style.height = '100%';
+            el.appendChild(imgEl);
+        }
         oppCapturedEl.appendChild(el);
     });
 }
@@ -1350,7 +1450,7 @@ function checkGameStatus() {
         let title = "Fim de Jogo";
         let reason = "A partida terminou.";
         
-        if (game.in_checkmate()) {
+        if (game.constructor.name === 'Checkers') {
             const loserColor = game.turn();
             const winnerColor = loserColor === 'w' ? 'b' : 'w';
             
@@ -1362,20 +1462,36 @@ function checkGameStatus() {
                 if (opp) winnerName = opp.name;
             }
             
-            title = "🏆 Xeque-mate!";
-            reason = `Vitória de ${winnerName} (${winnerColor === 'w' ? 'Brancas' : 'Pretas'}).`;
-        } else if (game.in_stalemate()) {
-            title = "🤝 Empate";
-            reason = "Rei afogado (Stalemate).";
-        } else if (game.insufficient_material()) {
-            title = "🤝 Empate";
-            reason = "Material insuficiente.";
-        } else if (game.in_threefold_repetition()) {
-            title = "🤝 Empate";
-            reason = "Repetição tripla de jogadas.";
-        } else if (game.in_draw()) {
-            title = "🤝 Empate";
-            reason = "Regra dos 50 movimentos ou acordo.";
+            title = "🏆 Fim de Jogo!";
+            reason = `Vitória de ${winnerName} (${winnerColor === 'w' ? 'Brancas' : 'Pretas'}) por falta de movimentos válidos do oponente.`;
+        } else {
+            if (game.in_checkmate()) {
+                const loserColor = game.turn();
+                const winnerColor = loserColor === 'w' ? 'b' : 'w';
+                
+                let winnerName = "Oponente";
+                if (myRole === 'player' && myColor === winnerColor) {
+                    winnerName = playerName;
+                } else {
+                    const opp = Object.values(players).find(p => p.color === winnerColor);
+                    if (opp) winnerName = opp.name;
+                }
+                
+                title = "🏆 Xeque-mate!";
+                reason = `Vitória de ${winnerName} (${winnerColor === 'w' ? 'Brancas' : 'Pretas'}).`;
+            } else if (game.in_stalemate()) {
+                title = "🤝 Empate";
+                reason = "Rei afogado (Stalemate).";
+            } else if (game.insufficient_material()) {
+                title = "🤝 Empate";
+                reason = "Material insuficiente.";
+            } else if (game.in_threefold_repetition()) {
+                title = "🤝 Empate";
+                reason = "Repetição tripla de jogadas.";
+            } else if (game.in_draw()) {
+                title = "🤝 Empate";
+                reason = "Regra dos 50 movimentos ou acordo.";
+            }
         }
 
         showGameOverModal(title, reason);
@@ -1527,8 +1643,12 @@ function updatePlayersHUD() {
     const selfBadge = document.querySelector('.self-color-badge');
     const oppBadge = document.querySelector('.opponent-color-badge');
 
+    const isCheckers = game.constructor.name === 'Checkers';
+    const whiteSymbol = isCheckers ? "⚪" : "♔";
+    const blackSymbol = isCheckers ? "🔴" : "♚";
+
     // Find opponent player object
-    const opponent = Object.values(players).find(p => p.id !== socket.id);
+    const opponent = Object.values(players).find(p => p.id !== playerId);
 
     // Render profiles based on role
     if (myRole === 'spectator') {
@@ -1539,7 +1659,7 @@ function updatePlayersHUD() {
             const p1 = playerList[0];
             selfNameEl.textContent = p1.name;
             selfRoleEl.textContent = p1.color === 'w' ? "Jogador (Brancas)" : "Jogador (Pretas)";
-            selfBadge.textContent = p1.color === 'w' ? "♔" : "♚";
+            selfBadge.textContent = p1.color === 'w' ? whiteSymbol : blackSymbol;
             selfBadge.className = `avatar-circle self-color-badge ${p1.color === 'w' ? 'white' : 'black'}`;
 
             const p2 = playerList[1];
@@ -1547,7 +1667,7 @@ function updatePlayersHUD() {
                 oppNameEl.textContent = p2.name;
                 oppStatusEl.textContent = "On-line";
                 oppStatusEl.className = "player-status connected";
-                oppBadge.textContent = p2.color === 'w' ? "♔" : "♚";
+                oppBadge.textContent = p2.color === 'w' ? whiteSymbol : blackSymbol;
                 oppBadge.className = `avatar-circle opponent-color-badge ${p2.color === 'w' ? 'white' : 'black'}`;
             } else {
                 oppNameEl.textContent = "Aguardando jogador...";
@@ -1572,14 +1692,14 @@ function updatePlayersHUD() {
         // For actual players
         selfNameEl.textContent = playerName;
         selfRoleEl.textContent = myColor === 'w' ? "Jogador (Brancas)" : "Jogador (Pretas)";
-        selfBadge.textContent = myColor === 'w' ? "♔" : "♚";
+        selfBadge.textContent = myColor === 'w' ? whiteSymbol : blackSymbol;
         selfBadge.className = `avatar-circle self-color-badge ${myColor === 'w' ? 'white' : 'black'}`;
 
         if (opponent) {
             oppNameEl.textContent = opponent.name;
             oppStatusEl.textContent = "On-line";
             oppStatusEl.className = "player-status connected";
-            oppBadge.textContent = opponent.color === 'w' ? "♔" : "♚";
+            oppBadge.textContent = opponent.color === 'w' ? whiteSymbol : blackSymbol;
             oppBadge.className = `avatar-circle opponent-color-badge ${opponent.color === 'w' ? 'white' : 'black'}`;
         } else {
             oppNameEl.textContent = "Aguardando oponente...";
@@ -1617,11 +1737,19 @@ socket.on('roomJoined', (data) => {
     document.getElementById('game-over-banner').classList.remove('active');
 
     // Load board state and history by replaying moves from initial board state
-    game = new Chess();
-    if (data.moves && data.moves.length > 0) {
-        data.moves.forEach(m => game.move(m));
-    } else if (data.fen) {
-        game = new Chess(data.fen);
+    const gameMode = data.gameMode || 'chess';
+    if (gameMode === 'checkers') {
+        game = new Checkers();
+        if (data.moves && data.moves.length > 0) {
+            data.moves.forEach(m => game.move(m));
+        } else if (data.fen) {
+            game.load(data.fen);
+        }
+    } else {
+        game = data.fen ? new Chess(data.fen) : new Chess();
+        if (data.moves && data.moves.length > 0) {
+            data.moves.forEach(m => game.move(m));
+        }
     }
     
     // Automatically flip the board if playing Black
@@ -1686,7 +1814,11 @@ socket.on('moveMade', (moveData) => {
 
     if (!move) {
         console.warn("Incremental move failed. Hard-syncing board state with FEN.");
-        game = new Chess(moveData.fen);
+        if (game.constructor.name === 'Checkers') {
+            game.load(moveData.fen);
+        } else {
+            game = new Chess(moveData.fen);
+        }
     }
 
     lastMoveSquares = [moveData.move.from, moveData.move.to];
@@ -1757,13 +1889,19 @@ socket.on('gameRestarted', (data) => {
     document.getElementById('game-over-banner').classList.remove('active');
 
     // Reset game engine
-    game = new Chess(data.fen);
+    const gameMode = data.gameMode || (game.constructor.name === 'Checkers' ? 'checkers' : 'chess');
+    if (gameMode === 'checkers') {
+        game = new Checkers();
+        if (data.fen) game.load(data.fen);
+    } else {
+        game = new Chess(data.fen);
+    }
     players = data.players;
     lastMoveSquares = [];
 
     // Re-verify my color (since they were swapped)
     if (myRole === 'player') {
-        myColor = players[socket.id].color;
+        myColor = players[playerId].color;
         boardFlipped = (myColor === 'b');
         
         const boardWrapper = document.querySelector('.board-wrapper');
@@ -1870,7 +2008,7 @@ socket.on('connect', () => {
     if (!isSinglePlayerMode && roomId && roomId !== 'SOLO') {
         console.log(`[Socket] Re-joining active room ${roomId} after connection restore...`);
         addSystemMessage('♻️ Conexão restabelecida! Sincronizando estado da partida...');
-        socket.emit('joinRoom', { roomId, playerName });
+        socket.emit('joinRoom', { roomId, playerName, playerId });
     }
 });
 

@@ -912,14 +912,18 @@ body {
 }
 
 .move-clickable {
-    cursor: pointer;
+    cursor: default;
     padding: 0 4px;
     border-radius: 4px;
     transition: all 0.15s ease;
     display: inline-block;
 }
 
-.move-clickable:hover {
+.history-list.replay-enabled .move-clickable {
+    cursor: pointer;
+}
+
+.history-list.replay-enabled .move-clickable:hover {
     background: rgba(255, 255, 255, 0.08);
     color: #fff !important;
 }
@@ -1363,4 +1367,70 @@ body {
     #game-over-banner .btn {
         width: 100%;
     }
+}
+
+/* Checkers Game Mode Styles */
+.checker-piece {
+    width: 72%;
+    height: 72%;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 5px 12px rgba(0, 0, 0, 0.45), inset 0 2px 4px rgba(255, 255, 255, 0.15);
+    border: 3px solid rgba(255, 255, 255, 0.08);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    cursor: grab;
+    position: relative;
+    z-index: 10;
+}
+
+.checker-piece:active {
+    cursor: grabbing;
+}
+
+.checker-piece.dragging {
+    opacity: 0.35;
+    transform: scale(1.1);
+}
+
+.checker-piece.white {
+    background: radial-gradient(circle at 35% 35%, #ffffff 0%, #cbd5e1 65%, #94a3b8 100%);
+    border-color: rgba(255, 255, 255, 0.65);
+}
+
+.checker-piece.black {
+    background: radial-gradient(circle at 35% 35%, #ef4444 0%, #b91c1c 65%, #450a0a 100%);
+    border-color: rgba(239, 68, 68, 0.45);
+}
+
+/* King (Dama) Style */
+.checker-piece.king::after {
+    content: "👑";
+    font-size: 1.3rem;
+    color: #f59e0b;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
+    animation: goldGlow 2s infinite alternate;
+}
+
+@keyframes goldGlow {
+    from { filter: drop-shadow(0 2px 4px rgba(245, 158, 11, 0.3)); }
+    to { filter: drop-shadow(0 2px 10px rgba(245, 158, 11, 0.8)); }
+}
+
+/* Active game mode lobby styling */
+.game-mode-select-label, .bot-game-mode-select-label {
+    transition: all 0.2s ease;
+}
+
+.game-mode-select-label:hover, .bot-game-mode-select-label:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.game-mode-select-label.active, .bot-game-mode-select-label.active {
+    border-color: var(--color-primary) !important;
+    background: rgba(139, 92, 246, 0.15) !important;
+    box-shadow: 0 0 12px rgba(139, 92, 246, 0.25);
+    color: #fff !important;
 }

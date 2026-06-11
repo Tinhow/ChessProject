@@ -41,6 +41,7 @@ async function saveRoomToRedis(roomId) {
     try {
         const serialized = JSON.stringify({
             id: room.id,
+            gameMode: room.gameMode,
             players: room.players,
             spectators: room.spectators,
             fen: room.fen,
@@ -65,6 +66,7 @@ async function loadRoomFromRedis(roomId) {
         const parsed = JSON.parse(data);
         rooms[roomId] = {
             id: parsed.id,
+            gameMode: parsed.gameMode || 'chess',
             players: parsed.players || {},
             spectators: parsed.spectators || [],
             fen: parsed.fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
@@ -145,9 +147,10 @@ io.on('connection', (socket) => {
     console.log(`User connected: ${socket.id}`);
     let currentRoomId = null;
 
-    socket.on('joinRoom', async ({ roomId, playerName, spectateMode }) => {
+    socket.on('joinRoom', async ({ roomId, playerName, playerId, gameMode, spectateMode }) => {
         roomId = roomId.trim().toUpperCase();
         playerName = playerName ? playerName.trim() : `Jogador_${socket.id.substring(0, 4)}`;
+        playerId = playerId || `p_${socket.id}`;
 
         // Leave previous room if any
         if (currentRoomId) {
@@ -161,11 +164,16 @@ io.on('connection', (socket) => {
         let room = await loadRoomFromRedis(roomId);
 
         if (!room) {
+            const activeMode = gameMode || 'chess';
+            const initialFen = (activeMode === 'checkers') 
+                ? '1p1p1p1p/p1p1p1p1/1p1p1p1p/8/8/P1P1P1P1/1P1P1P1P/P1P1P1P1 w -'
+                : 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
             rooms[roomId] = {
                 id: roomId,
+                gameMode: activeMode,
                 players: {},
                 spectators: [],
-                fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+                fen: initialFen,
                 moves: [],
                 rematchVotes: new Set()
             };
@@ -181,34 +189,19 @@ io.on('connection', (socket) => {
         // Clean up any old spectator entry with the same name to prevent duplicates
         room.spectators = room.spectators.filter(s => s.name.trim().toLowerCase() !== normalizedJoinName);
 
-        // Check if a player with this name already exists in the room (reconnection/refresh case)
-        let existingPlayerKey = null;
+        // Check if a player with this playerId already exists in the room (reconnection/refresh case)
+        let existingPlayer = room.players[playerId];
         console.log(`[joinRoom] Lista atual de jogadores em memória na sala ${roomId}:`, JSON.stringify(room.players));
 
-        for (const [sid, p] of Object.entries(room.players)) {
-            const normalizedExistingName = p.name ? p.name.trim().toLowerCase() : '';
-            console.log(`[joinRoom] Comparando "${normalizedJoinName}" com "${normalizedExistingName}" (socket: ${sid})`);
-            if (normalizedExistingName === normalizedJoinName) {
-                existingPlayerKey = sid;
-                break;
-            }
-        }
-
-        if (existingPlayerKey) {
+        if (existingPlayer) {
             // Reconnection: reclaim slot and keep the color
             role = 'player';
-            color = room.players[existingPlayerKey].color;
-            
-            // Remove the old connection entry
-            delete room.players[existingPlayerKey];
+            color = existingPlayer.color;
             
             // Register under the new connection ID
-            room.players[socket.id] = {
-                id: socket.id,
-                name: playerName,
-                color: color
-            };
-            console.log(`[Reconnection SUCCESS] Player "${playerName}" reassumiu sua vaga como "${color}" (novo socket: ${socket.id})`);
+            existingPlayer.socketId = socket.id;
+            existingPlayer.name = playerName; // update name just in case
+            console.log(`[Reconnection SUCCESS] Player "${playerName}" reassumiu sua vaga como "${color}" por playerId: ${playerId} (socket: ${socket.id})`);
         } else if (!spectateMode) {
             const playerIds = Object.keys(room.players);
             console.log(`[joinRoom] Sala não cheia e sem modo espectador. Jogadores atuais: ${playerIds.length}`);
@@ -216,12 +209,13 @@ io.on('connection', (socket) => {
                 role = 'player';
                 // First player gets White, second gets Black
                 color = playerIds.length === 0 ? 'w' : (room.players[playerIds[0]].color === 'w' ? 'b' : 'w');
-                room.players[socket.id] = {
-                    id: socket.id,
+                room.players[playerId] = {
+                    id: playerId,
                     name: playerName,
-                    color: color
+                    color: color,
+                    socketId: socket.id
                 };
-                console.log(`[joinRoom] Nova vaga atribuída para "${playerName}" como "${color}"`);
+                console.log(`[joinRoom] Nova vaga atribuída para "${playerName}" como "${color}" por playerId: ${playerId}`);
             } else {
                 // Room is full, join as spectator
                 room.spectators.push({
@@ -255,18 +249,19 @@ io.on('connection', (socket) => {
             spectators: room.spectators,
             fen: room.fen,
             moves: room.moves,
-            timerSeconds: room.timerSeconds || 0
+            timerSeconds: room.timerSeconds || 0,
+            gameMode: room.gameMode
         });
 
         // Broadcast to other players in the room
         socket.to(roomId).emit('playerJoined', {
             role,
-            player: role === 'player' ? room.players[socket.id] : { id: socket.id, name: playerName },
+            player: role === 'player' ? room.players[playerId] : { id: socket.id, name: playerName },
             players: room.players,
             spectators: room.spectators
         });
 
-        console.log(`User ${playerName} (${socket.id}) joined room ${roomId} as ${role} (${color})`);
+        console.log(`User ${playerName} joined room ${roomId} as ${role} (${color})`);
     });
 
     socket.on('makeMove', async (moveData) => {
@@ -289,8 +284,9 @@ io.on('connection', (socket) => {
         const room = rooms[currentRoomId];
         let senderName = 'Espectador';
         
-        if (room.players[socket.id]) {
-            senderName = room.players[socket.id].name;
+        const activePlayer = Object.values(room.players).find(p => p.socketId === socket.id);
+        if (activePlayer) {
+            senderName = activePlayer.name;
         } else {
             const spec = room.spectators.find(s => s.id === socket.id);
             if (spec) senderName = spec.name;
@@ -308,12 +304,12 @@ io.on('connection', (socket) => {
         if (!currentRoomId || !rooms[currentRoomId]) return;
         const room = rooms[currentRoomId];
         
-        if (room.players[socket.id]) {
-            const resigningPlayer = room.players[socket.id];
+        const resigningPlayer = Object.values(room.players).find(p => p.socketId === socket.id);
+        if (resigningPlayer) {
             io.to(currentRoomId).emit('gameOver', {
                 type: 'resign',
                 winnerColor: resigningPlayer.color === 'w' ? 'b' : 'w',
-                winnerName: Object.values(room.players).find(p => p.id !== socket.id)?.name || 'Oponente'
+                winnerName: Object.values(room.players).find(p => p.socketId !== socket.id)?.name || 'Oponente'
             });
             stopRoomTimer(currentRoomId);
         }
@@ -350,24 +346,28 @@ io.on('connection', (socket) => {
         if (!currentRoomId || !rooms[currentRoomId]) return;
         const room = rooms[currentRoomId];
         
-        if (!room.players[socket.id]) return; // Only players can request rematch
+        const votingPlayer = Object.values(room.players).find(p => p.socketId === socket.id);
+        if (!votingPlayer) return; // Only players can request rematch
         
-        room.rematchVotes.add(socket.id);
+        room.rematchVotes.add(votingPlayer.id);
         
         // Notify others
         socket.to(currentRoomId).emit('rematchRequested', {
             voterId: socket.id,
-            voterName: room.players[socket.id].name
+            voterName: votingPlayer.name
         });
 
         // Save votes to Redis
         await saveRoomToRedis(currentRoomId);
- 
+  
         // Check if both players agreed
         const activePlayerIds = Object.keys(room.players);
         if (activePlayerIds.every(id => room.rematchVotes.has(id))) {
             // Reset game state
-            room.fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+            const isCheckers = room.gameMode === 'checkers';
+            room.fen = isCheckers 
+                ? '1p1p1p1p/p1p1p1p1/1p1p1p1p/8/8/P1P1P1P1/1P1P1P1P/P1P1P1P1 w -'
+                : 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
             room.moves = [];
             room.rematchVotes.clear();
             room.timerSeconds = 0; // Reset timer
@@ -383,8 +383,9 @@ io.on('connection', (socket) => {
 
             await saveRoomToRedis(currentRoomId);
             startRoomTimer(currentRoomId); // Inicia o timer da revanche
- 
+  
             io.to(currentRoomId).emit('gameRestarted', {
+                gameMode: room.gameMode,
                 fen: room.fen,
                 players: room.players
             });
@@ -396,9 +397,10 @@ io.on('connection', (socket) => {
         if (currentRoomId && rooms[currentRoomId]) {
             const room = rooms[currentRoomId];
             
-            if (room.players[socket.id]) {
-                const playerName = room.players[socket.id].name;
-                delete room.players[socket.id];
+            const disconnectedPlayer = Object.values(room.players).find(p => p.socketId === socket.id);
+            if (disconnectedPlayer) {
+                const dPlayerId = disconnectedPlayer.id;
+                const playerName = disconnectedPlayer.name;
                 
                 // Pausar o cronômetro da sala se um jogador desconectar
                 stopRoomTimer(currentRoomId);
@@ -412,7 +414,33 @@ io.on('connection', (socket) => {
                 });
                 
                 // Clear rematch vote
-                room.rematchVotes.delete(socket.id);
+                room.rematchVotes.delete(dPlayerId);
+
+                // 15-second grace period for player seat recovery
+                setTimeout(async () => {
+                    if (rooms[currentRoomId] && rooms[currentRoomId].players[dPlayerId]) {
+                        const currentPlayerObj = rooms[currentRoomId].players[dPlayerId];
+                        if (currentPlayerObj.socketId === socket.id) {
+                            delete rooms[currentRoomId].players[dPlayerId];
+                            console.log(`[Disconnect Timeout] Player "${playerName}" removed from room ${currentRoomId} after 15s.`);
+                            
+                            await saveRoomToRedis(currentRoomId);
+
+                            io.to(currentRoomId).emit('playerLeft', {
+                                role: 'player',
+                                id: socket.id,
+                                name: playerName,
+                                players: rooms[currentRoomId].players
+                            });
+
+                            if (Object.keys(rooms[currentRoomId].players).length === 0 && rooms[currentRoomId].spectators.length === 0) {
+                                delete rooms[currentRoomId];
+                                await deleteRoomFromRedis(currentRoomId);
+                                console.log(`Room ${currentRoomId} deleted due to inactivity.`);
+                            }
+                        }
+                    }
+                }, 15000);
             } else {
                 const index = room.spectators.findIndex(s => s.id === socket.id);
                 if (index !== -1) {
@@ -427,9 +455,9 @@ io.on('connection', (socket) => {
                 }
             }
 
-            // Save updated state after someone disconnected (e.g. spectator left, or player disconnected but can rejoin)
+            // Save updated state after someone disconnected (e.g. spectator left)
             await saveRoomToRedis(currentRoomId);
- 
+  
             // If room is completely empty, delete it after a small delay
             if (Object.keys(room.players).length === 0 && room.spectators.length === 0) {
                 setTimeout(async () => {

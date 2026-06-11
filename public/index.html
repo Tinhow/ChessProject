@@ -33,6 +33,21 @@
                         <input type="text" id="player-name" placeholder="Digite seu nome..." maxlength="15" autocomplete="off">
                     </div>
 
+                    <!-- Game Mode Select -->
+                    <div class="input-group" style="margin-bottom: 24px;">
+                        <label style="font-size: 0.85rem; font-weight: 700; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 1px;">Modo de Jogo</label>
+                        <div style="display: flex; gap: 12px; margin-top: 8px;">
+                            <label style="flex: 1; padding: 12px; border-radius: 8px; background: rgba(255,255,255,0.03); text-align: center; cursor: pointer; border: 1px solid var(--color-border); font-weight: 600; font-size: 0.9rem;" class="game-mode-select-label active">
+                                <input type="radio" name="lobby-game-mode" value="chess" checked style="display:none;">
+                                ♟️ Xadrez
+                            </label>
+                            <label style="flex: 1; padding: 12px; border-radius: 8px; background: rgba(255,255,255,0.03); text-align: center; cursor: pointer; border: 1px solid var(--color-border); font-weight: 600; font-size: 0.9rem;" class="game-mode-select-label">
+                                <input type="radio" name="lobby-game-mode" value="checkers" style="display:none;">
+                                🏁 Damas
+                            </label>
+                        </div>
+                    </div>
+
                     <div class="lobby-actions">
                         <!-- Create Room -->
                         <div class="action-card create-card">
@@ -288,8 +303,21 @@
     <div id="bot-setup-modal" class="modal-overlay">
         <div class="modal-card glass alert-modal">
             <h3>🤖 Configurar Jogo Solo</h3>
-            <p style="margin-bottom: 16px; color: var(--color-text-muted); font-size: 0.95rem;">Escolha as suas peças e a força do Computador:</p>
-            
+            <!-- Game Mode Select -->
+            <div class="input-group" style="margin: 16px 0;">
+                <label style="font-size: 0.85rem; font-weight: 700; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 1px;">Modo de Jogo</label>
+                <div style="display: flex; gap: 12px; margin-top: 8px;">
+                    <label style="flex: 1; padding: 12px; border-radius: 8px; background: rgba(255,255,255,0.03); text-align: center; cursor: pointer; border: 1px solid var(--color-border); font-weight: 600; font-size: 0.9rem;" class="bot-game-mode-select-label active">
+                        <input type="radio" name="bot-game-mode" value="chess" checked style="display:none;">
+                        ♟️ Xadrez
+                    </label>
+                    <label style="flex: 1; padding: 12px; border-radius: 8px; background: rgba(255,255,255,0.03); text-align: center; cursor: pointer; border: 1px solid var(--color-border); font-weight: 600; font-size: 0.9rem;" class="bot-game-mode-select-label">
+                        <input type="radio" name="bot-game-mode" value="checkers" style="display:none;">
+                        🏁 Damas
+                    </label>
+                </div>
+            </div>
+
             <div class="input-group" style="margin: 16px 0;">
                 <label style="font-size: 0.85rem; font-weight: 700; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 1px;">Sua Cor</label>
                 <div style="display: flex; gap: 12px; margin-top: 8px;">
@@ -345,6 +373,7 @@
     <!-- Libraries and Scripts -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
     <script src="/socket.io/socket.io.js"></script>
+    <script src="checkers.js"></script>
     <script src="bot.js"></script>
     <script src="client.js"></script>
 </body>
