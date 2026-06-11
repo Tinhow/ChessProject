@@ -14,6 +14,7 @@ let players = {};
 let spectators = [];
 let lastMoveSquares = []; // [from, to]
 let pendingPromotionMove = null;
+let currentReplayIndex = null;
 
 // Offline Bot State
 let isSinglePlayerMode = false;
@@ -310,6 +311,8 @@ function restoreGameState(state) {
 
         document.getElementById('btn-draw').style.display = 'inline-flex';
         document.getElementById('btn-resign').style.display = 'inline-flex';
+        document.getElementById('btn-draw').disabled = false;
+        document.getElementById('btn-resign').disabled = false;
         document.getElementById('room-code-display').textContent = 'SOLO 🤖';
         document.getElementById('moves-history-list').innerHTML = '';
         document.getElementById('chat-messages').innerHTML = '<div class="chat-system">♻️ Partida restaurada! Continuando de onde parou...</div>';
@@ -437,6 +440,8 @@ function setupEventHandlers() {
         
         document.getElementById('btn-draw').style.display = 'inline-flex';
         document.getElementById('btn-resign').style.display = 'inline-flex';
+        document.getElementById('btn-draw').disabled = false;
+        document.getElementById('btn-resign').disabled = false;
 
         boardFlipped = (myColor === 'b');
         const boardWrapper = document.querySelector('.board-wrapper');
@@ -646,6 +651,8 @@ function setupEventHandlers() {
             
             document.getElementById('moves-history-list').innerHTML = '';
             document.getElementById('chat-messages').innerHTML = '<div class="chat-system">Nova Partida Iniciada! Cores Invertidas.</div>';
+            document.getElementById('btn-draw').disabled = false;
+            document.getElementById('btn-resign').disabled = false;
             
             updatePlayersHUD();
             updateTurnIndicator();
@@ -707,6 +714,47 @@ function setupEventHandlers() {
             renderBoard();
         });
     }
+
+    // Replay navigation wiring
+    const btnFirst = document.getElementById('btn-replay-first');
+    const btnPrev = document.getElementById('btn-replay-prev');
+    const btnNext = document.getElementById('btn-replay-next');
+    const btnLast = document.getElementById('btn-replay-last');
+
+    if (btnFirst) {
+        btnFirst.addEventListener('click', () => {
+            goToReplayIndex(0);
+        });
+    }
+    if (btnPrev) {
+        btnPrev.addEventListener('click', () => {
+            const historyLength = game.history().length;
+            let prevIndex = currentReplayIndex === null ? historyLength - 2 : currentReplayIndex - 1;
+            goToReplayIndex(prevIndex);
+        });
+    }
+    if (btnNext) {
+        btnNext.addEventListener('click', () => {
+            if (currentReplayIndex === null) return;
+            goToReplayIndex(currentReplayIndex + 1);
+        });
+    }
+    if (btnLast) {
+        btnLast.addEventListener('click', () => {
+            goToReplayIndex(null);
+        });
+    }
+
+    const movesHistoryList = document.getElementById('moves-history-list');
+    if (movesHistoryList) {
+        movesHistoryList.addEventListener('click', (e) => {
+            const clickable = e.target.closest('.move-clickable');
+            if (clickable) {
+                const index = parseInt(clickable.getAttribute('data-index'));
+                goToReplayIndex(index);
+            }
+        });
+    }
 }
 
 // CSS Modal helper
@@ -766,7 +814,28 @@ function renderBoard() {
     const fileOrder = boardFlipped ? [...files].reverse() : files;
     const rankOrder = boardFlipped ? [...ranks].reverse() : ranks;
 
-    const boardState = game.board();
+    const isReplaying = currentReplayIndex !== null && currentReplayIndex < game.history().length - 1;
+    let boardState = game.board();
+    let activeGameInstance = game;
+    let displayLastMoveSquares = lastMoveSquares;
+
+    if (isReplaying) {
+        const tempGame = new Chess();
+        const moves = game.history({ verbose: true });
+        for (let i = 0; i <= currentReplayIndex; i++) {
+            tempGame.move(moves[i]);
+        }
+        boardState = tempGame.board();
+        activeGameInstance = tempGame;
+        
+        // Find last move of the historical state
+        const lastMove = moves[currentReplayIndex];
+        if (lastMove) {
+            displayLastMoveSquares = [lastMove.from, lastMove.to];
+        } else {
+            displayLastMoveSquares = [];
+        }
+    }
 
     // Map board to visual squares
     for (let r = 0; r < 8; r++) {
@@ -791,17 +860,16 @@ function renderBoard() {
             if (selectedSquare === squareId) {
                 squareEl.classList.add('selected');
             }
-            if (lastMoveSquares.includes(squareId)) {
+            if (displayLastMoveSquares.includes(squareId)) {
                 squareEl.classList.add('last-move');
             }
             // Check highlight
-            if (piece && piece.type === 'k' && piece.color === game.turn() && game.in_check()) {
+            if (piece && piece.type === 'k' && piece.color === activeGameInstance.turn() && activeGameInstance.in_check()) {
                 squareEl.classList.add('check');
             }
 
             // Draw Piece
             if (piece) {
-                const pieceKey = piece.color + piece.type;
                 const pieceEl = document.createElement('div');
                 pieceEl.className = `piece ${piece.color}`;
                 
@@ -814,8 +882,8 @@ function renderBoard() {
                 imgEl.style.pointerEvents = 'none';
                 pieceEl.appendChild(imgEl);
                 
-                // Set drag properties
-                if (myRole === 'player' && myColor === piece.color && game.turn() === myColor) {
+                // Set drag properties (disabled during replay)
+                if (!isReplaying && myRole === 'player' && myColor === piece.color && activeGameInstance.turn() === myColor) {
                     pieceEl.setAttribute('draggable', 'true');
                     setupPieceDragEvents(pieceEl, squareId);
                 }
@@ -823,8 +891,8 @@ function renderBoard() {
                 squareEl.appendChild(pieceEl);
             }
 
-            // Highlight possible moves
-            if (possibleMoves.includes(squareId)) {
+            // Highlight possible moves (disabled during replay)
+            if (!isReplaying && possibleMoves.includes(squareId)) {
                 if (piece) {
                     // Attack ring
                     const ring = document.createElement('div');
@@ -849,10 +917,14 @@ function renderBoard() {
     }
 
     updateCapturedPieces();
+    highlightActiveMoveInHistory();
+    updateNavigationButtonsState();
 }
 
 // Click to move logic
 function handleSquareClick(squareId) {
+    const isReplaying = currentReplayIndex !== null && currentReplayIndex < game.history().length - 1;
+    if (isReplaying) return;
     if (myRole !== 'player' || game.turn() !== myColor) return;
 
     const piece = game.get(squareId);
@@ -909,6 +981,8 @@ function setupPieceDragEvents(pieceEl, sourceSquare) {
 // Square drop handlers
 function setupSquareDropEvents(squareEl, targetSquare) {
     squareEl.addEventListener('dragover', (e) => {
+        const isReplaying = currentReplayIndex !== null && currentReplayIndex < game.history().length - 1;
+        if (isReplaying) return;
         if (possibleMoves.includes(targetSquare)) {
             e.preventDefault();
             squareEl.classList.add('drag-over');
@@ -942,6 +1016,7 @@ function triggerBotMove() {
     setTimeout(() => {
         const botMove = getBotMove(game, botElo, botColor);
         if (botMove) {
+            currentReplayIndex = null; // Reset replay index
             const moveResult = game.move(botMove);
             if (moveResult) {
                 lastMoveSquares = [botMove.from, botMove.to];
@@ -984,6 +1059,9 @@ function triggerBotMove() {
 
 // Execute move locally and sync with server
 function makeMove(from, to, promotion = null) {
+    // Reset replay view
+    currentReplayIndex = null;
+
     // Clear selection state immediately
     selectedSquare = null;
     possibleMoves = [];
@@ -1090,6 +1168,15 @@ function updateTurnIndicator() {
     const turnText = document.getElementById('turn-text');
     const indicator = document.getElementById('turn-indicator');
     
+    const isReplaying = currentReplayIndex !== null && currentReplayIndex < game.history().length - 1;
+    if (isReplaying) {
+        const moveNumber = Math.floor(currentReplayIndex / 2) + 1;
+        const colorName = currentReplayIndex % 2 === 0 ? 'Brancas' : 'Pretas';
+        turnText.textContent = `Replay: Lance ${moveNumber} (${colorName})`;
+        indicator.className = "turn-indicator";
+        return;
+    }
+
     if (Object.keys(players).length < 2) {
         turnText.textContent = "Aguardando Oponente...";
         indicator.className = "turn-indicator";
@@ -1109,6 +1196,69 @@ function updateTurnIndicator() {
         turnText.textContent = `Vez de ${currentTurnName}`;
         indicator.className = "turn-indicator opponent-turn";
     }
+}
+
+// ------------------------------------------
+// REPLAY HELPERS
+// ------------------------------------------
+
+function goToReplayIndex(index) {
+    const historyLength = game.history().length;
+    if (historyLength === 0) return;
+
+    if (index < 0) index = 0;
+    if (index >= historyLength) index = null;
+
+    currentReplayIndex = index;
+    renderBoard();
+    updateTurnIndicator();
+}
+
+function highlightActiveMoveInHistory() {
+    const clickableSpans = document.querySelectorAll('.move-clickable');
+    clickableSpans.forEach(span => span.classList.remove('active-move'));
+
+    const historyLength = game.history().length;
+    let targetIndex = currentReplayIndex;
+
+    if (targetIndex === null && historyLength > 0) {
+        targetIndex = historyLength - 1;
+    }
+
+    if (targetIndex !== null && targetIndex >= 0) {
+        const activeSpan = document.querySelector(`.move-clickable[data-index="${targetIndex}"]`);
+        if (activeSpan) {
+            activeSpan.classList.add('active-move');
+            activeSpan.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+    }
+}
+
+function updateNavigationButtonsState() {
+    const btnFirst = document.getElementById('btn-replay-first');
+    const btnPrev = document.getElementById('btn-replay-prev');
+    const btnNext = document.getElementById('btn-replay-next');
+    const btnLast = document.getElementById('btn-replay-last');
+
+    if (!btnFirst || !btnPrev || !btnNext || !btnLast) return;
+
+    const historyLength = game.history().length;
+
+    if (historyLength === 0) {
+        btnFirst.disabled = true;
+        btnPrev.disabled = true;
+        btnNext.disabled = true;
+        btnLast.disabled = true;
+        return;
+    }
+
+    const isAtStart = currentReplayIndex === 0;
+    const isAtEnd = currentReplayIndex === null || currentReplayIndex === historyLength - 1;
+
+    btnFirst.disabled = isAtStart;
+    btnPrev.disabled = isAtStart;
+    btnNext.disabled = isAtEnd;
+    btnLast.disabled = isAtEnd;
 }
 
 // Compute captured pieces from initial count
@@ -1254,6 +1404,12 @@ function showGameOverModal(title, reason) {
     
     document.getElementById('rematch-status').textContent = '';
     
+    // Disable game action buttons when game is over (analyzing mode)
+    const btnDraw = document.getElementById('btn-draw');
+    const btnResign = document.getElementById('btn-resign');
+    if (btnDraw) btnDraw.disabled = true;
+    if (btnResign) btnResign.disabled = true;
+    
     showModal('game-over-modal');
     playSound('game-over');
 }
@@ -1299,12 +1455,18 @@ function rebuildMovesHistory(movesArray) {
         numSpan.textContent = `${Math.floor(i / 2) + 1}.`;
         
         const whiteSpan = document.createElement('span');
-        whiteSpan.className = 'move-white';
+        whiteSpan.className = 'move-white move-clickable';
+        whiteSpan.setAttribute('data-index', i);
         whiteSpan.textContent = translateSanToPt(movesArray[i].san);
         
         const blackSpan = document.createElement('span');
-        blackSpan.className = 'move-black';
-        blackSpan.textContent = movesArray[i + 1] ? translateSanToPt(movesArray[i + 1].san) : '';
+        blackSpan.className = 'move-black move-clickable';
+        if (movesArray[i + 1]) {
+            blackSpan.setAttribute('data-index', i + 1);
+            blackSpan.textContent = translateSanToPt(movesArray[i + 1].san);
+        } else {
+            blackSpan.textContent = '';
+        }
 
         pairEl.appendChild(numSpan);
         pairEl.appendChild(whiteSpan);
@@ -1317,6 +1479,7 @@ function rebuildMovesHistory(movesArray) {
 function addMoveToHistoryList(move) {
     const listEl = document.getElementById('moves-history-list');
     const moveNum = Math.floor(game.history().length / 2) + (game.history().length % 2 === 1 ? 1 : 0);
+    const moveIndex = game.history().length - 1;
     
     if (game.history().length % 2 === 1) {
         // White move (creates new row)
@@ -1328,11 +1491,12 @@ function addMoveToHistoryList(move) {
         numSpan.textContent = `${moveNum}.`;
         
         const whiteSpan = document.createElement('span');
-        whiteSpan.className = 'move-white';
+        whiteSpan.className = 'move-white move-clickable';
+        whiteSpan.setAttribute('data-index', moveIndex);
         whiteSpan.textContent = translateSanToPt(move.san);
         
         const blackSpan = document.createElement('span');
-        blackSpan.className = 'move-black';
+        blackSpan.className = 'move-black move-clickable';
         blackSpan.textContent = '';
 
         pairEl.appendChild(numSpan);
@@ -1344,7 +1508,10 @@ function addMoveToHistoryList(move) {
         const lastPair = listEl.lastElementChild;
         if (lastPair) {
             const blackSpan = lastPair.querySelector('.move-black');
-            if (blackSpan) blackSpan.textContent = translateSanToPt(move.san);
+            if (blackSpan) {
+                blackSpan.setAttribute('data-index', moveIndex);
+                blackSpan.textContent = translateSanToPt(move.san);
+            }
         }
     }
     listEl.scrollTop = listEl.scrollHeight;
@@ -1442,6 +1609,8 @@ socket.on('roomJoined', (data) => {
     } else {
         document.getElementById('btn-draw').style.display = 'inline-flex';
         document.getElementById('btn-resign').style.display = 'inline-flex';
+        document.getElementById('btn-draw').disabled = false;
+        document.getElementById('btn-resign').disabled = false;
     }
 
     // Hide game-over banner on new/rejoined room
@@ -1502,6 +1671,9 @@ socket.on('playerJoined', (data) => {
 });
 
 socket.on('moveMade', (moveData) => {
+    // Reset replay view
+    currentReplayIndex = null;
+
     // Clear local selection if any to prevent visual glitches on opponent turn
     selectedSquare = null;
     possibleMoves = [];
@@ -1604,6 +1776,10 @@ socket.on('gameRestarted', (data) => {
 
     // Reset UI
     document.getElementById('moves-history-list').innerHTML = '';
+    if (myRole === 'player') {
+        document.getElementById('btn-draw').disabled = false;
+        document.getElementById('btn-resign').disabled = false;
+    }
     
     addSystemMessage("Nova partida iniciada! Cores invertidas.");
     
